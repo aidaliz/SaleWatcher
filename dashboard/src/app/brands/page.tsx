@@ -1,17 +1,8 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { brandsApi, Brand } from '@/lib/api';
-
-// Disable caching to always fetch fresh data
-export const dynamic = 'force-dynamic';
-
-async function getBrands(): Promise<{ brands: Brand[]; total: number }> {
-  try {
-    return await brandsApi.list({ limit: 100 });
-  } catch (error) {
-    console.error('Failed to fetch brands:', error);
-    return { brands: [], total: 0 };
-  }
-}
 
 function BrandStatusBadge({ isActive }: { isActive: boolean }) {
   return (
@@ -27,8 +18,43 @@ function BrandStatusBadge({ isActive }: { isActive: boolean }) {
   );
 }
 
-export default async function BrandsPage() {
-  const { brands, total } = await getBrands();
+export default function BrandsPage() {
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchBrands() {
+      try {
+        const data = await brandsApi.list({ limit: 100 });
+        setBrands(data.brands);
+        setTotal(data.total);
+      } catch (err) {
+        console.error('Failed to fetch brands:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load brands');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBrands();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading brands...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
+        Error: {error}
+      </div>
+    );
+  }
 
   return (
     <div>
