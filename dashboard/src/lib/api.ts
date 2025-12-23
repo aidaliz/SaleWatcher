@@ -145,6 +145,10 @@ export interface BrandUpdate {
 export interface Prediction {
   id: string;
   brand_id: string;
+  brand?: {
+    id: string;
+    name: string;
+  };
   source_window_id: string;
   predicted_start: string;
   predicted_end: string;
@@ -153,27 +157,22 @@ export interface Prediction {
   confidence: number;
   calendar_event_id: string | null;
   notified_at: string | null;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface ExtractedSale {
   id: string;
   email_id: string;
+  brand_name: string;
+  email_subject: string;
   discount_type: string;
   discount_value: number | null;
   discount_max: number | null;
   is_sitewide: boolean;
   categories: string[];
-  excluded_categories: string[];
-  conditions: string[];
-  sale_start: string | null;
-  sale_end: string | null;
   confidence: number;
   raw_discount_text: string | null;
-  model_used: string;
-  review_status: 'pending' | 'approved' | 'rejected';
-  reviewed_at: string | null;
-  created_at: string;
+  model_used: string | null;
 }
 
 export interface AccuracyStats {
