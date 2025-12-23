@@ -219,3 +219,76 @@ async def trigger_full_pipeline(
         message="Pipeline completed",
         details=results,
     )
+
+
+@router.post("/calendar/sync", response_model=TriggerResponse)
+async def trigger_calendar_sync(
+    brand_id: Optional[UUID] = None,
+    days_ahead: int = 30,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Sync upcoming predictions to Google Calendar."""
+    from src.calendar.service import sync_predictions_to_calendar
+
+    try:
+        result = await sync_predictions_to_calendar(
+            db,
+            days_ahead=days_ahead,
+            brand_id=brand_id,
+        )
+
+        return TriggerResponse(
+            status="completed",
+            message=f"Synced {result['synced']} prediction(s) to calendar",
+            details=result,
+        )
+    except Exception as e:
+        return TriggerResponse(
+            status="error",
+            message=f"Calendar sync failed: {str(e)}",
+            details={"error": str(e)},
+        )
+
+
+@router.post("/notify/digest", response_model=TriggerResponse)
+async def trigger_review_digest(
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Send the daily review digest email."""
+    from src.notifier.service import send_daily_digest
+
+    email_id = await send_daily_digest(db)
+
+    if email_id:
+        return TriggerResponse(
+            status="sent",
+            message="Review digest email sent",
+            details={"email_id": email_id},
+        )
+    else:
+        return TriggerResponse(
+            status="skipped",
+            message="No pending reviews or email not configured",
+        )
+
+
+@router.post("/notify/weekly", response_model=TriggerResponse)
+async def trigger_weekly_summary(
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Send the weekly prediction summary email."""
+    from src.notifier.service import send_weekly_summary
+
+    email_id = await send_weekly_summary(db)
+
+    if email_id:
+        return TriggerResponse(
+            status="sent",
+            message="Weekly summary email sent",
+            details={"email_id": email_id},
+        )
+    else:
+        return TriggerResponse(
+            status="skipped",
+            message="Email not configured",
+        )
