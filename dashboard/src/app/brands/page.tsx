@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { brandsApi, Brand } from '@/lib/api';
 
+// Disable caching to always fetch fresh data
+export const dynamic = 'force-dynamic';
+
 async function getBrands(): Promise<{ brands: Brand[]; total: number }> {
   try {
     return await brandsApi.list({ limit: 100 });
