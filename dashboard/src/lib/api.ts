@@ -4,13 +4,17 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Validate API URL configuration
-if (typeof window !== 'undefined' && API_BASE_URL && !API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
-  console.error(
-    `[SaleWatcher] Invalid NEXT_PUBLIC_API_URL: "${API_BASE_URL}". ` +
-    `URL must start with http:// or https://. ` +
-    `Example: https://your-backend.up.railway.app`
-  );
+// Debug: Log API URL in browser console (only once)
+if (typeof window !== 'undefined') {
+  console.log('[SaleWatcher] API URL:', API_BASE_URL);
+
+  if (!API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
+    console.error(
+      `[SaleWatcher] Invalid NEXT_PUBLIC_API_URL: "${API_BASE_URL}". ` +
+      `URL must start with http:// or https://. ` +
+      `Example: https://your-backend.up.railway.app`
+    );
+  }
 }
 
 interface FetchOptions extends RequestInit {
@@ -22,18 +26,27 @@ async function fetchApi<T>(endpoint: string, options: FetchOptions = {}): Promis
 
   let url = `${API_BASE_URL}${endpoint}`;
 
+  // Build query params
+  const searchParams = new URLSearchParams();
   if (params) {
-    const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
         searchParams.append(key, String(value));
       }
     });
-    const queryString = searchParams.toString();
-    if (queryString) {
-      url += `?${queryString}`;
-    }
   }
+
+  // Add cache-busting timestamp for GET requests
+  if (!fetchOptions.method || fetchOptions.method === 'GET') {
+    searchParams.append('_t', String(Date.now()));
+  }
+
+  const queryString = searchParams.toString();
+  if (queryString) {
+    url += `?${queryString}`;
+  }
+
+  console.log('[SaleWatcher] Fetching:', fetchOptions.method || 'GET', url);
 
   const response = await fetch(url, {
     ...fetchOptions,
@@ -41,6 +54,8 @@ async function fetchApi<T>(endpoint: string, options: FetchOptions = {}): Promis
     mode: 'cors',
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
       ...fetchOptions.headers,
     },
   });

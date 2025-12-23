@@ -2,11 +2,24 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from src.config.settings import get_settings
 from src.api.routes import brands, predictions, review, accuracy, system
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Middleware to add no-cache headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 
 @asynccontextmanager
@@ -30,6 +43,9 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    # No-cache middleware (must be added before CORS)
+    app.add_middleware(NoCacheMiddleware)
 
     # CORS middleware
     app.add_middleware(
