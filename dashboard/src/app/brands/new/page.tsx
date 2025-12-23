@@ -9,6 +9,7 @@ export default function NewBrandPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -33,11 +34,13 @@ export default function NewBrandPage() {
         excluded_categories: excludedCategories,
       });
 
-      router.push('/brands');
-      router.refresh();
+      setSuccess(true);
+      // Use window.location for reliable navigation with fresh data
+      setTimeout(() => {
+        window.location.href = '/brands';
+      }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create brand');
-    } finally {
       setLoading(false);
     }
   };
@@ -62,6 +65,12 @@ export default function NewBrandPage() {
         {error && (
           <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="rounded-lg bg-green-50 p-4 text-sm text-green-600">
+            Brand created successfully! Redirecting...
           </div>
         )}
 
