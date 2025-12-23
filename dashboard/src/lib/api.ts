@@ -4,6 +4,15 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Validate API URL configuration
+if (typeof window !== 'undefined' && API_BASE_URL && !API_BASE_URL.startsWith('http://') && !API_BASE_URL.startsWith('https://')) {
+  console.error(
+    `[SaleWatcher] Invalid NEXT_PUBLIC_API_URL: "${API_BASE_URL}". ` +
+    `URL must start with http:// or https://. ` +
+    `Example: https://your-backend.up.railway.app`
+  );
+}
+
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
 }
