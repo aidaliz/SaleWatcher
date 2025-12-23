@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -36,6 +36,9 @@ class RawEmail(Base):
     """Raw scraped email from Milled.com."""
 
     __tablename__ = "raw_emails"
+    __table_args__ = (
+        Index("idx_raw_emails_brand_date", "brand_id", "sent_at"),
+    )
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     brand_id = Column(PG_UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False)
@@ -54,6 +57,9 @@ class ExtractedSale(Base):
     """LLM-extracted sale details from an email."""
 
     __tablename__ = "extracted_sales"
+    __table_args__ = (
+        Index("idx_extracted_sales_review", "review_status", "confidence"),
+    )
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     email_id = Column(PG_UUID(as_uuid=True), ForeignKey("raw_emails.id"), nullable=False)
@@ -81,6 +87,9 @@ class SaleWindow(Base):
     """Deduplicated sale event grouping multiple emails."""
 
     __tablename__ = "sale_windows"
+    __table_args__ = (
+        Index("idx_sale_windows_brand_year", "brand_id", "year"),
+    )
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     brand_id = Column(PG_UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False)
@@ -103,6 +112,10 @@ class Prediction(Base):
     """Predicted future sale based on historical patterns."""
 
     __tablename__ = "predictions"
+    __table_args__ = (
+        Index("idx_predictions_dates", "predicted_start", "predicted_end"),
+        Index("idx_predictions_brand", "brand_id"),
+    )
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     brand_id = Column(PG_UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False)
@@ -126,6 +139,9 @@ class PredictionOutcome(Base):
     """Verification result for a prediction."""
 
     __tablename__ = "prediction_outcomes"
+    __table_args__ = (
+        Index("idx_outcomes_result", "auto_result", "manual_override"),
+    )
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     prediction_id = Column(PG_UUID(as_uuid=True), ForeignKey("predictions.id"), unique=True, nullable=False)
