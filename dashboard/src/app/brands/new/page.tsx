@@ -80,7 +80,7 @@ export default function NewBrandPage() {
             onChange={(e) =>
               setFormData({ ...formData, name: e.target.value })
             }
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="e.g., Target"
           />
         </div>
@@ -100,7 +100,7 @@ export default function NewBrandPage() {
             onChange={(e) =>
               setFormData({ ...formData, milled_slug: e.target.value })
             }
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="e.g., target"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -122,7 +122,7 @@ export default function NewBrandPage() {
             onChange={(e) =>
               setFormData({ ...formData, excluded_categories: e.target.value })
             }
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="e.g., Groceries, Beauty"
           />
           <p className="mt-1 text-xs text-gray-500">
