@@ -292,3 +292,36 @@ async def trigger_weekly_summary(
             status="skipped",
             message="Email not configured",
         )
+
+
+@router.post("/verify/trigger", response_model=TriggerResponse)
+async def trigger_verification(
+    brand_id: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Trigger auto-verification of past predictions."""
+    from src.verifier.service import run_verification
+
+    results = await run_verification(db, brand_id=brand_id)
+
+    return TriggerResponse(
+        status="completed",
+        message=f"Verified {results['total']} prediction(s)",
+        details=results,
+    )
+
+
+@router.post("/accuracy/recalculate", response_model=TriggerResponse)
+async def trigger_accuracy_recalculation(
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Recalculate accuracy statistics for all brands."""
+    from src.verifier.accuracy import calculate_all_accuracy
+
+    stats = await calculate_all_accuracy(db)
+
+    return TriggerResponse(
+        status="completed",
+        message=f"Recalculated accuracy for {stats['brands_tracked']} brand(s)",
+        details=stats,
+    )
