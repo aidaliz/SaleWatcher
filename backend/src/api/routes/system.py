@@ -22,13 +22,20 @@ class TriggerResponse(BaseModel):
 
 
 @router.get("/health")
-async def health_check(
+async def health_check():
+    """Health check endpoint - simple ping for Railway."""
+    return {"status": "healthy"}
+
+
+@router.get("/health/detailed")
+async def health_check_detailed(
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Health check endpoint."""
+    """Detailed health check with database status."""
+    from sqlalchemy import text
     try:
         # Test database connection
-        await db.execute("SELECT 1")
+        await db.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
