@@ -60,12 +60,17 @@ async function fetchApi<T>(endpoint: string, options: FetchOptions = {}): Promis
     },
   });
 
+  console.log('[SaleWatcher] Response status:', response.status, response.statusText);
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    console.error('[SaleWatcher] API Error:', error);
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log('[SaleWatcher] Response data:', JSON.stringify(data).slice(0, 500));
+  return data;
 }
 
 // Brand API

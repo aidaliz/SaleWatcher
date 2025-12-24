@@ -53,7 +53,7 @@ export default function RootLayout({
               </a>
             </nav>
             <div className="absolute bottom-4 left-4 right-4 text-xs text-gray-400">
-              Build: v1.0.1 (Dec 24)
+              Build: v1.0.2
             </div>
           </aside>
           {/* Main content */}
