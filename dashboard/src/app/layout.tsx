@@ -16,7 +16,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-background antialiased">
         <div className="flex min-h-screen">
           {/* Sidebar */}
-          <aside className="w-64 border-r bg-gray-50 dark:bg-gray-900">
+          <aside className="relative w-64 border-r bg-gray-50 dark:bg-gray-900">
             <div className="p-4">
               <h1 className="text-xl font-bold">SaleWatcher</h1>
             </div>
@@ -52,6 +52,9 @@ export default function RootLayout({
                 Accuracy
               </a>
             </nav>
+            <div className="absolute bottom-4 left-4 right-4 text-xs text-gray-400">
+              Build: v1.0.1 (Dec 24)
+            </div>
           </aside>
           {/* Main content */}
           <main className="flex-1 p-6">{children}</main>
