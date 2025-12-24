@@ -50,8 +50,8 @@ async def trigger_scrape(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Manually trigger a scrape cycle."""
-    from src.scraper.milled import MilledScraper
-    from src.db.crud.brands import get_brand, list_brands
+    from src.scraper.service import scrape_brands
+    from src.db.crud.brands import get_brand, get_brands
 
     if brand_id:
         brand = await get_brand(db, brand_id)
@@ -62,16 +62,14 @@ async def trigger_scrape(
             )
         brands = [brand]
     else:
-        brands, _ = await list_brands(db, limit=1000, only_active=True)
+        brands, _ = await get_brands(db, limit=1000, active_only=True)
 
     # Queue scraping task
     async def scrape_task():
-        scraper = MilledScraper()
-        for brand in brands:
-            try:
-                await scraper.scrape_brand(db, brand)
-            except Exception as e:
-                print(f"Error scraping {brand.name}: {e}")
+        results = await scrape_brands(db, brands)
+        total_new = sum(r.get("new", 0) for r in results)
+        total_errors = sum(r.get("errors", 0) for r in results)
+        print(f"Scrape complete: {total_new} new emails, {total_errors} errors")
 
     background_tasks.add_task(scrape_task)
 
@@ -167,7 +165,7 @@ async def backfill_brand(
 ):
     """Trigger historical backfill for a brand."""
     from src.db.crud.brands import get_brand
-    from src.scraper.milled import MilledScraper
+    from src.scraper.service import ScraperService
 
     brand = await get_brand(db, brand_id)
     if not brand:
@@ -178,8 +176,9 @@ async def backfill_brand(
 
     # Queue backfill task
     async def backfill_task():
-        scraper = MilledScraper()
-        await scraper.scrape_brand(db, brand, months_back=months)
+        service = ScraperService()
+        result = await service.backfill_brand(db, brand, months_back=months)
+        print(f"Backfill complete for {brand.name}: {result.get('new', 0)} new emails")
 
     background_tasks.add_task(backfill_task)
 
