@@ -68,8 +68,13 @@ class MilledAuth:
         """Perform login to Milled.com."""
         logger.info("Logging in to Milled.com...")
 
+        # Check if we should use manual login (no credentials set)
         if not settings.milled_email or not settings.milled_password:
-            raise ValueError("MILLED_EMAIL and MILLED_PASSWORD must be set in environment")
+            raise ValueError(
+                "Not logged in and no credentials set.\n"
+                "Please run 'python scripts/login_milled.py' first to log in manually,\n"
+                "or set MILLED_EMAIL and MILLED_PASSWORD in your .env file."
+            )
 
         await self.page.goto("https://milled.com/sign-in", wait_until="networkidle")
 
@@ -90,7 +95,10 @@ class MilledAuth:
             logger.info("Session saved")
         except Exception as e:
             logger.error(f"Login failed: {e}")
-            raise RuntimeError("Failed to login to Milled.com. Check credentials.")
+            raise RuntimeError(
+                "Failed to login to Milled.com.\n"
+                "If using Google OAuth, run 'python scripts/login_milled.py' instead."
+            )
 
     async def get_page(self) -> Page:
         """Get authenticated page for scraping."""
