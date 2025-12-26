@@ -5,6 +5,8 @@ Manual login script for Milled.com.
 Opens a browser window for you to log in manually (including Google OAuth).
 After you log in, the session cookies are saved for the scraper to use.
 
+Uses stealth techniques to bypass Cloudflare detection.
+
 Usage:
     python scripts/login_milled.py
 """
@@ -17,44 +19,57 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from playwright.async_api import async_playwright
 
 COOKIES_PATH = Path(__file__).parent.parent / "src" / "scraper" / ".cookies.json"
+USER_DATA_DIR = Path(__file__).parent.parent / ".browser_data"
 
 
 async def main():
     print("Opening browser for Milled.com login...")
     print("Please log in with your Google account.")
-    print("After logging in successfully, close the browser window.\n")
+    print("After logging in successfully, the script will save your session.\n")
 
     async with async_playwright() as p:
-        # Launch visible browser
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
-        page = await context.new_page()
+        # Use persistent context with user data dir (more like a real browser)
+        # This helps bypass Cloudflare detection
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=str(USER_DATA_DIR),
+            headless=False,
+            channel="chrome",  # Use real Chrome if installed
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+            ignore_default_args=["--enable-automation"],
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
 
-        # Go to Milled.com login page
-        await page.goto("https://milled.com/sign-in")
+        page = context.pages[0] if context.pages else await context.new_page()
 
-        print("Waiting for you to log in...")
-        print("(The script will detect when you reach the account page)\n")
+        # Navigate to Milled.com
+        print("Navigating to Milled.com...")
+        await page.goto("https://milled.com/sign-in", wait_until="domcontentloaded")
 
-        # Wait for successful login (user lands on account or home page)
-        try:
-            # Wait up to 5 minutes for login
-            await page.wait_for_url(
-                lambda url: "/account" in url or url == "https://milled.com/",
-                timeout=300000
-            )
-            print("Login detected! Saving session...")
+        print("\n" + "="*60)
+        print("INSTRUCTIONS:")
+        print("1. Complete the Cloudflare checkbox if it appears")
+        print("2. Log in with your Google account")
+        print("3. Once you see your account page, press ENTER here")
+        print("="*60 + "\n")
 
-            # Save cookies
-            await context.storage_state(path=str(COOKIES_PATH))
-            print(f"\nSession saved to: {COOKIES_PATH}")
-            print("You can now run the scraper!")
+        # Wait for user to press Enter
+        input("Press ENTER after you've logged in successfully...")
 
-        except Exception as e:
-            print(f"\nLogin timed out or failed: {e}")
-            print("Please try again.")
+        # Check if logged in
+        current_url = page.url
+        print(f"\nCurrent URL: {current_url}")
 
-        await browser.close()
+        # Save cookies regardless of URL (user confirmed they logged in)
+        await context.storage_state(path=str(COOKIES_PATH))
+        print(f"\nSession saved to: {COOKIES_PATH}")
+        print("You can now run the scraper!")
+
+        await context.close()
 
 
 if __name__ == "__main__":

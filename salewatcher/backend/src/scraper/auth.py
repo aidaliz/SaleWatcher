@@ -11,13 +11,14 @@ logger = logging.getLogger(__name__)
 
 # Path to store session cookies
 COOKIES_PATH = Path(__file__).parent / ".cookies.json"
+USER_DATA_DIR = Path(__file__).parent.parent.parent / ".browser_data"
 
 
 class MilledAuth:
     """Handles Milled.com authentication with session persistence."""
 
     def __init__(self):
-        self.browser: Optional[Browser] = None
+        self.playwright = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
 
@@ -30,19 +31,30 @@ class MilledAuth:
 
     async def setup(self) -> None:
         """Initialize browser and authenticate."""
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(headless=True)
+        self.playwright = await async_playwright().start()
 
-        # Try to load existing session
-        if COOKIES_PATH.exists():
+        # Check for saved cookies first
+        storage_state = str(COOKIES_PATH) if COOKIES_PATH.exists() else None
+
+        if storage_state:
             logger.info("Loading existing session...")
-            self.context = await self.browser.new_context(
-                storage_state=str(COOKIES_PATH)
-            )
-        else:
-            self.context = await self.browser.new_context()
 
-        self.page = await self.context.new_page()
+        # Use persistent context with stealth settings to avoid Cloudflare
+        self.context = await self.playwright.chromium.launch_persistent_context(
+            user_data_dir=str(USER_DATA_DIR),
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+            ignore_default_args=["--enable-automation"],
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            storage_state=storage_state,
+        )
+
+        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
 
         # Check if we're logged in
         if not await self._is_logged_in():
@@ -113,5 +125,6 @@ class MilledAuth:
                 await self.context.storage_state(path=str(COOKIES_PATH))
             except:
                 pass
-        if self.browser:
-            await self.browser.close()
+            await self.context.close()
+        if self.playwright:
+            await self.playwright.stop()
