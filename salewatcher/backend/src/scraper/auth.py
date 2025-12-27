@@ -33,13 +33,10 @@ class MilledAuth:
         """Initialize browser and authenticate."""
         self.playwright = await async_playwright().start()
 
-        # Check for saved cookies first
-        storage_state = str(COOKIES_PATH) if COOKIES_PATH.exists() else None
-
-        if storage_state:
-            logger.info("Loading existing session...")
+        logger.info("Starting browser with persistent context...")
 
         # Use persistent context with stealth settings to avoid Cloudflare
+        # The user_data_dir stores cookies/session from the manual login
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(USER_DATA_DIR),
             headless=True,
@@ -51,7 +48,6 @@ class MilledAuth:
             ignore_default_args=["--enable-automation"],
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            storage_state=storage_state,
         )
 
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
