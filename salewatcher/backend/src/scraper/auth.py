@@ -17,7 +17,8 @@ USER_DATA_DIR = Path(__file__).parent.parent.parent / ".browser_data"
 class MilledAuth:
     """Handles Milled.com authentication with session persistence."""
 
-    def __init__(self):
+    def __init__(self, headless: bool = True):
+        self.headless = headless
         self.playwright = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -33,13 +34,19 @@ class MilledAuth:
         """Initialize browser and authenticate."""
         self.playwright = await async_playwright().start()
 
-        logger.info("Starting browser with persistent context...")
+        # Check if we have existing browser data from manual login
+        has_session = USER_DATA_DIR.exists() and any(USER_DATA_DIR.iterdir())
+
+        if has_session:
+            logger.info("Using existing browser session from manual login...")
+        else:
+            logger.warning("No existing session found. Run 'python scripts/login_milled.py' first.")
 
         # Use persistent context with stealth settings to avoid Cloudflare
         # The user_data_dir stores cookies/session from the manual login
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(USER_DATA_DIR),
-            headless=True,
+            headless=self.headless,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
@@ -52,25 +59,9 @@ class MilledAuth:
 
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
 
-        # Check if we're logged in
-        if not await self._is_logged_in():
+        # Skip login check if we have existing session data - just try to use it
+        if not has_session:
             await self._login()
-
-    async def _is_logged_in(self) -> bool:
-        """Check if current session is authenticated."""
-        await self.page.goto("https://milled.com/account", wait_until="networkidle")
-
-        # If we're redirected to login, we're not authenticated
-        if "/sign-in" in self.page.url or "/login" in self.page.url:
-            return False
-
-        # Check for account page elements
-        try:
-            await self.page.wait_for_selector("text=Account Settings", timeout=3000)
-            logger.info("Already logged in")
-            return True
-        except:
-            return False
 
     async def _login(self) -> None:
         """Perform login to Milled.com."""
@@ -79,7 +70,7 @@ class MilledAuth:
         # Check if we should use manual login (no credentials set)
         if not settings.milled_email or not settings.milled_password:
             raise ValueError(
-                "Not logged in and no credentials set.\n"
+                "No session found and no credentials set.\n"
                 "Please run 'python scripts/login_milled.py' first to log in manually,\n"
                 "or set MILLED_EMAIL and MILLED_PASSWORD in your .env file."
             )
