@@ -69,7 +69,8 @@ def extract_emails_from_html(html_path: Path, brand_slug: str) -> list[dict]:
 
     # Email links are in format: /{brand_slug}/{email-title-with-id}
     # e.g., /gamestop/buy-2-get-1-free-on-pre-owned-games-XaJ_lDiJB24GL_zV
-    email_pattern = re.compile(rf'^/?{re.escape(brand_slug)}/[^/]+-[A-Za-z0-9_]{{8,}}$')
+    # Match: starts with /brand_slug/ followed by anything with a hyphen (to exclude just /brand_slug)
+    email_pattern = re.compile(rf'^/?{re.escape(brand_slug)}/[^/]*-[^/]+$')
     email_links = soup.find_all('a', href=email_pattern)
 
     logger.info(f"Found {len(email_links)} email links")
