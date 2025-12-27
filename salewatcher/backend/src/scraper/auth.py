@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright_stealth import stealth_async
 
 from src.config import settings
 
@@ -58,6 +59,9 @@ class MilledAuth:
         )
 
         self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+
+        # Apply stealth to bypass bot detection
+        await stealth_async(self.page)
 
         # Skip login check if we have existing session data - just try to use it
         if not has_session:
