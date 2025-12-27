@@ -58,7 +58,7 @@ def parse_date(date_str: str) -> datetime:
     return datetime.utcnow()
 
 
-def extract_emails_from_html(html_path: Path) -> list[dict]:
+def extract_emails_from_html(html_path: Path, brand_slug: str) -> list[dict]:
     """Extract email links and metadata from saved HTML page."""
     logger.info(f"Parsing: {html_path}")
 
@@ -67,8 +67,10 @@ def extract_emails_from_html(html_path: Path) -> list[dict]:
 
     emails = []
 
-    # Find all email links - try multiple selectors
-    email_links = soup.find_all('a', href=re.compile(r'/emails/'))
+    # Email links are in format: /{brand_slug}/{email-title-with-id}
+    # e.g., /gamestop/buy-2-get-1-free-on-pre-owned-games-XaJ_lDiJB24GL_zV
+    email_pattern = re.compile(rf'^/?{re.escape(brand_slug)}/[^/]+-[A-Za-z0-9_]{{8,}}$')
+    email_links = soup.find_all('a', href=email_pattern)
 
     logger.info(f"Found {len(email_links)} email links")
 
@@ -124,7 +126,7 @@ async def import_emails(brand_slug: str, html_path: Path):
     """Import emails from HTML file into database."""
 
     # Parse HTML
-    emails = extract_emails_from_html(html_path)
+    emails = extract_emails_from_html(html_path, brand_slug)
 
     if not emails:
         logger.error("No emails found in HTML file")
