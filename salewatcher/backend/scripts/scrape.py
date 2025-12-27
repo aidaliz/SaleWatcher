@@ -49,7 +49,7 @@ async def main(args):
 
             logger.info(f"Scraping brand: {brand.name}")
 
-            async with MilledScraper(db) as scraper:
+            async with MilledScraper(db, headless=not args.visible) as scraper:
                 emails = await scraper.scrape_brand(
                     brand,
                     days_back=args.days,
@@ -66,6 +66,7 @@ async def main(args):
                 db,
                 days_back=args.days,
                 max_emails_per_brand=args.max,
+                headless=not args.visible,
             )
 
             logger.info("Scraping complete:")
@@ -94,6 +95,11 @@ if __name__ == "__main__":
         type=int,
         default=500,
         help="Max emails per brand (default: 500)",
+    )
+    parser.add_argument(
+        "--visible",
+        action="store_true",
+        help="Run browser in visible mode (non-headless) for debugging",
     )
 
     args = parser.parse_args()

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
@@ -21,13 +22,14 @@ class MilledScraper:
 
     BASE_URL = "https://milled.com"
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, headless: bool = True):
         self.db = db
+        self.headless = headless
         self.auth: Optional[MilledAuth] = None
         self.page: Optional[Page] = None
 
     async def __aenter__(self):
-        self.auth = MilledAuth()
+        self.auth = MilledAuth(headless=self.headless)
         await self.auth.setup()
         self.page = await self.auth.get_page()
         return self
@@ -58,8 +60,22 @@ class MilledScraper:
         brand_url = f"{self.BASE_URL}/stores/{brand.milled_slug}"
         await self.page.goto(brand_url, wait_until="networkidle")
 
+        # Debug: Log current URL and page state
+        current_url = self.page.url
+        logger.info(f"Navigated to: {current_url}")
+
+        # Check for Cloudflare challenge
+        page_content = await self.page.content()
+        if "challenge" in page_content.lower() or "cloudflare" in page_content.lower():
+            logger.warning("Cloudflare challenge detected! Try running with --visible or re-login.")
+            # Save debug screenshot
+            screenshot_path = Path(__file__).parent.parent.parent / "debug_screenshot.png"
+            await self.page.screenshot(path=str(screenshot_path))
+            logger.info(f"Debug screenshot saved to: {screenshot_path}")
+            return []
+
         # Check if brand page exists
-        if "not found" in (await self.page.content()).lower():
+        if "not found" in page_content.lower():
             logger.error(f"Brand page not found: {brand_url}")
             return []
 
@@ -84,6 +100,22 @@ class MilledScraper:
         while emails_found < max_emails and scroll_attempts < max_scroll_attempts:
             # Get all email links on page
             email_links = await self.page.query_selector_all('a[href*="/emails/"]')
+
+            # Debug: Log number of links found on first scroll
+            if scroll_attempts == 0:
+                logger.info(f"Found {len(email_links)} email links on page")
+                if len(email_links) == 0:
+                    # Try alternative selectors
+                    all_links = await self.page.query_selector_all('a')
+                    logger.info(f"Total links on page: {len(all_links)}")
+                    # Log first few href values for debugging
+                    for i, link in enumerate(all_links[:10]):
+                        href = await link.get_attribute("href")
+                        logger.debug(f"  Link {i}: {href}")
+                    # Save debug screenshot
+                    screenshot_path = Path(__file__).parent.parent.parent / "debug_screenshot.png"
+                    await self.page.screenshot(path=str(screenshot_path))
+                    logger.info(f"Debug screenshot saved to: {screenshot_path}")
 
             for link in email_links:
                 if emails_found >= max_emails:
@@ -263,6 +295,7 @@ async def scrape_all_brands(
     db: AsyncSession,
     days_back: int = 365,
     max_emails_per_brand: int = 500,
+    headless: bool = True,
 ) -> dict[str, int]:
     """
     Scrape emails for all active brands.
@@ -275,7 +308,7 @@ async def scrape_all_brands(
 
     results = {}
 
-    async with MilledScraper(db) as scraper:
+    async with MilledScraper(db, headless=headless) as scraper:
         for brand in brands:
             try:
                 emails = await scraper.scrape_brand(brand, days_back, max_emails_per_brand)
