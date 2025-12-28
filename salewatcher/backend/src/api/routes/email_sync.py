@@ -1,10 +1,16 @@
 """
 API routes for email synchronization from Gmail.
+
+Supports web-based OAuth2 flow for Gmail authentication.
 """
+import json
+import os
+import secrets
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,12 +36,21 @@ class SyncResponse(BaseModel):
     stats: Optional[dict] = None
 
 
-class GmailSetupResponse(BaseModel):
+class GmailStatusResponse(BaseModel):
     """Response for Gmail setup status."""
     configured: bool
     authenticated: bool
     message: str
 
+
+class OAuthUrlResponse(BaseModel):
+    """Response containing OAuth authorization URL."""
+    auth_url: str
+    state: str
+
+
+# In-memory state storage for OAuth (use Redis in production)
+_oauth_states: dict[str, bool] = {}
 
 # Global Gmail client instance
 _gmail_client: Optional[GmailClient] = None
@@ -45,82 +60,205 @@ def get_gmail_client() -> GmailClient:
     """Get or create Gmail client instance."""
     global _gmail_client
     if _gmail_client is None:
-        _gmail_client = GmailClient(
-            credentials_path='gmail_credentials.json',
-            token_path='gmail_token.json',
-        )
+        _gmail_client = GmailClient()
     return _gmail_client
 
 
-@router.get("/gmail/status", response_model=GmailSetupResponse)
+def _is_gmail_configured() -> bool:
+    """Check if Gmail OAuth credentials are configured."""
+    client_id = os.getenv('GMAIL_CLIENT_ID')
+    client_secret = os.getenv('GMAIL_CLIENT_SECRET')
+    return bool(client_id and client_secret)
+
+
+def _get_stored_token() -> Optional[dict]:
+    """Get stored Gmail token from environment or file."""
+    # First try environment variable (for production deployment)
+    token_json = os.getenv('GMAIL_TOKEN_JSON')
+    if token_json:
+        try:
+            return json.loads(token_json)
+        except json.JSONDecodeError:
+            pass
+
+    # Fall back to token file (for local development)
+    token_path = 'gmail_token.json'
+    if os.path.exists(token_path):
+        try:
+            with open(token_path, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return None
+
+
+def _save_token(token_data: dict) -> None:
+    """Save token to file for local development."""
+    token_path = 'gmail_token.json'
+    try:
+        with open(token_path, 'w') as f:
+            json.dump(token_data, f, indent=2)
+    except IOError as e:
+        # In production, token should be set via GMAIL_TOKEN_JSON env var
+        pass
+
+
+@router.get("/gmail/status", response_model=GmailStatusResponse)
 async def get_gmail_status():
-    """Check Gmail API configuration status."""
-    import os
+    """
+    Check Gmail API configuration and authentication status.
 
-    credentials_exist = os.path.exists('gmail_credentials.json')
-    token_exists = os.path.exists('gmail_token.json')
-
-    if not credentials_exist:
-        return GmailSetupResponse(
+    Returns:
+        - configured: Whether OAuth credentials are set
+        - authenticated: Whether we have valid tokens
+        - message: Human-readable status message
+    """
+    if not _is_gmail_configured():
+        return GmailStatusResponse(
             configured=False,
             authenticated=False,
-            message="Gmail credentials not configured. Download credentials.json from Google Cloud Console and save as gmail_credentials.json",
+            message="Gmail not configured. Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET environment variables.",
         )
 
-    if not token_exists:
-        return GmailSetupResponse(
+    token_data = _get_stored_token()
+    if not token_data:
+        return GmailStatusResponse(
             configured=True,
             authenticated=False,
-            message="Gmail configured but not authenticated. Run the authentication flow to connect your Gmail account.",
+            message="Gmail configured but not authenticated. Start the OAuth flow to connect your Gmail account.",
         )
 
-    # Try to authenticate
+    # Try to authenticate with stored token
     client = get_gmail_client()
     try:
-        if client.authenticate():
-            return GmailSetupResponse(
+        if client.authenticate_with_token(token_data):
+            return GmailStatusResponse(
                 configured=True,
                 authenticated=True,
                 message="Gmail connected and ready to sync emails.",
             )
     except Exception as e:
-        return GmailSetupResponse(
+        return GmailStatusResponse(
             configured=True,
             authenticated=False,
-            message=f"Gmail authentication failed: {str(e)}",
+            message=f"Gmail token invalid or expired: {str(e)}",
         )
 
-    return GmailSetupResponse(
+    return GmailStatusResponse(
         configured=True,
         authenticated=False,
-        message="Gmail authentication required.",
+        message="Gmail authentication required. Token may have expired.",
     )
 
 
-@router.post("/gmail/authenticate")
-async def authenticate_gmail():
+@router.get("/gmail/auth/start", response_model=OAuthUrlResponse)
+async def start_gmail_oauth():
     """
-    Initiate Gmail OAuth2 authentication.
+    Start the Gmail OAuth2 flow.
 
-    Note: This will open a browser window for authentication.
-    Only works when running locally.
+    Returns the authorization URL to redirect the user to Google's consent screen.
+    The user will be redirected back to /api/email/gmail/auth/callback after authorizing.
     """
+    if not _is_gmail_configured():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gmail not configured. Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET environment variables.",
+        )
+
     client = get_gmail_client()
 
+    # Generate a random state for CSRF protection
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = True
+
     try:
-        success = client.authenticate()
-        if success:
-            return {"status": "success", "message": "Gmail authentication successful"}
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Gmail authentication failed",
-            )
+        auth_url = client.get_auth_url(state=state)
+        return OAuthUrlResponse(auth_url=auth_url, state=state)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Authentication error: {str(e)}",
+            detail=f"Failed to generate auth URL: {str(e)}",
         )
+
+
+@router.get("/gmail/auth/callback")
+async def gmail_oauth_callback(
+    code: str = Query(..., description="Authorization code from Google"),
+    state: str = Query(..., description="State parameter for CSRF protection"),
+    error: Optional[str] = Query(None, description="Error from OAuth flow"),
+):
+    """
+    Handle OAuth2 callback from Google.
+
+    Exchanges the authorization code for tokens and saves them.
+    Redirects to the dashboard on success.
+    """
+    # Check for OAuth errors
+    if error:
+        # Redirect to dashboard with error
+        return RedirectResponse(
+            url=f"/settings?gmail_error={error}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Verify state for CSRF protection
+    if state not in _oauth_states:
+        return RedirectResponse(
+            url="/settings?gmail_error=invalid_state",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Remove used state
+    del _oauth_states[state]
+
+    client = get_gmail_client()
+
+    try:
+        # Exchange code for tokens
+        token_data = client.exchange_code(code)
+
+        # Save token for future use
+        _save_token(token_data)
+
+        # Authenticate with the new token
+        if client.authenticate_with_token(token_data):
+            return RedirectResponse(
+                url="/settings?gmail_success=true",
+                status_code=status.HTTP_302_FOUND,
+            )
+        else:
+            return RedirectResponse(
+                url="/settings?gmail_error=auth_failed",
+                status_code=status.HTTP_302_FOUND,
+            )
+
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/settings?gmail_error={str(e)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+
+@router.post("/gmail/disconnect")
+async def disconnect_gmail():
+    """
+    Disconnect Gmail by removing stored tokens.
+    """
+    global _gmail_client
+
+    # Remove token file if it exists
+    token_path = 'gmail_token.json'
+    if os.path.exists(token_path):
+        try:
+            os.remove(token_path)
+        except IOError:
+            pass
+
+    # Reset client
+    _gmail_client = None
+
+    return {"status": "success", "message": "Gmail disconnected"}
 
 
 @router.post("/sync/brand/{brand_id}", response_model=SyncResponse)
@@ -131,6 +269,9 @@ async def sync_brand_emails(
 ):
     """
     Sync emails for a specific brand from Gmail.
+
+    Fetches promotional emails from the configured Gmail account
+    for the specified brand and stores them for extraction.
     """
     # Get brand
     query = select(Brand).where(Brand.id == brand_id)
@@ -143,12 +284,19 @@ async def sync_brand_emails(
             detail="Brand not found",
         )
 
-    # Get Gmail client
-    client = get_gmail_client()
-    if not client.authenticate():
+    # Check authentication
+    token_data = _get_stored_token()
+    if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gmail not authenticated. Please authenticate first.",
+            detail="Gmail not authenticated. Please connect your Gmail account first.",
+        )
+
+    client = get_gmail_client()
+    if not client.authenticate_with_token(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail authentication failed. Please reconnect your Gmail account.",
         )
 
     # Sync emails
@@ -171,19 +319,28 @@ async def sync_all_brands(
 ):
     """
     Sync emails for all active brands from Gmail.
+
+    Iterates through all brands and syncs promotional emails from Gmail.
     """
-    # Get Gmail client
-    client = get_gmail_client()
-    if not client.authenticate():
+    # Check authentication
+    token_data = _get_stored_token()
+    if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gmail not authenticated. Please authenticate first.",
+            detail="Gmail not authenticated. Please connect your Gmail account first.",
+        )
+
+    client = get_gmail_client()
+    if not client.authenticate_with_token(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail authentication failed. Please reconnect your Gmail account.",
         )
 
     # Sync all brands
     service = EmailIngestionService(client)
     all_stats = await service.sync_all_brands(
-        db, request.days_back, request.max_emails_per_brand
+        db, request.days_back, request.max_emails
     )
 
     total_new = sum(s.get('new', 0) for s in all_stats if isinstance(s.get('new'), int))

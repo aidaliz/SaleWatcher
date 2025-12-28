@@ -3,17 +3,21 @@ Gmail API integration for ingesting brand emails.
 
 This module connects to Gmail via OAuth2 and fetches promotional emails
 from tracked brands for sale extraction.
+
+Supports both local development and web deployment OAuth flows.
 """
 import base64
 import hashlib
+import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from email.utils import parsedate_to_datetime
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -26,46 +30,94 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 class GmailClient:
     """Client for interacting with Gmail API."""
 
-    def __init__(self, credentials_path: str = 'credentials.json', token_path: str = 'token.json'):
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        redirect_uri: Optional[str] = None,
+    ):
         """
         Initialize Gmail client.
 
         Args:
-            credentials_path: Path to OAuth2 credentials JSON from Google Cloud Console
-            token_path: Path to store/load the user's access token
+            client_id: OAuth2 client ID (or set GMAIL_CLIENT_ID env var)
+            client_secret: OAuth2 client secret (or set GMAIL_CLIENT_SECRET env var)
+            redirect_uri: OAuth2 redirect URI (or set GMAIL_REDIRECT_URI env var)
         """
-        self.credentials_path = credentials_path
-        self.token_path = token_path
+        self.client_id = client_id or os.getenv('GMAIL_CLIENT_ID')
+        self.client_secret = client_secret or os.getenv('GMAIL_CLIENT_SECRET')
+        self.redirect_uri = redirect_uri or os.getenv('GMAIL_REDIRECT_URI', 'http://localhost:8000/api/email/oauth/callback')
+
         self.service = None
         self.creds = None
 
-    def authenticate(self) -> bool:
+    def get_auth_url(self, state: Optional[str] = None) -> str:
         """
-        Authenticate with Gmail API using OAuth2.
+        Get the OAuth2 authorization URL for user to authenticate.
+
+        Args:
+            state: Optional state parameter for CSRF protection
+
+        Returns:
+            Authorization URL to redirect user to
+        """
+        flow = self._create_flow()
+        auth_url, _ = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent',
+            state=state,
+        )
+        return auth_url
+
+    def exchange_code(self, code: str) -> dict:
+        """
+        Exchange authorization code for tokens.
+
+        Args:
+            code: Authorization code from OAuth callback
+
+        Returns:
+            Token dict with access_token, refresh_token, etc.
+        """
+        flow = self._create_flow()
+        flow.fetch_token(code=code)
+
+        creds = flow.credentials
+        token_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': list(creds.scopes),
+        }
+
+        return token_data
+
+    def authenticate_with_token(self, token_data: dict) -> bool:
+        """
+        Authenticate using saved token data.
+
+        Args:
+            token_data: Token dict from exchange_code() or environment
 
         Returns:
             True if authentication successful
         """
         try:
-            # Try to load existing token
-            try:
-                self.creds = Credentials.from_authorized_user_file(self.token_path, SCOPES)
-            except FileNotFoundError:
-                self.creds = None
+            self.creds = Credentials(
+                token=token_data.get('token'),
+                refresh_token=token_data.get('refresh_token'),
+                token_uri=token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
+                client_id=token_data.get('client_id', self.client_id),
+                client_secret=token_data.get('client_secret', self.client_secret),
+                scopes=token_data.get('scopes', SCOPES),
+            )
 
-            # If no valid credentials, get new ones
-            if not self.creds or not self.creds.valid:
-                if self.creds and self.creds.expired and self.creds.refresh_token:
-                    self.creds.refresh(Request())
-                else:
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        self.credentials_path, SCOPES
-                    )
-                    self.creds = flow.run_local_server(port=0)
-
-                # Save the credentials for next run
-                with open(self.token_path, 'w') as token:
-                    token.write(self.creds.to_json())
+            # Refresh if expired
+            if self.creds.expired and self.creds.refresh_token:
+                self.creds.refresh(Request())
 
             # Build the Gmail service
             self.service = build('gmail', 'v1', credentials=self.creds)
@@ -75,6 +127,68 @@ class GmailClient:
         except Exception as e:
             logger.error(f"Gmail authentication failed: {e}")
             return False
+
+    def authenticate_from_env(self) -> bool:
+        """
+        Authenticate using token stored in GMAIL_TOKEN_JSON environment variable.
+
+        Returns:
+            True if authentication successful
+        """
+        token_json = os.getenv('GMAIL_TOKEN_JSON')
+        if not token_json:
+            logger.error("GMAIL_TOKEN_JSON environment variable not set")
+            return False
+
+        try:
+            token_data = json.loads(token_json)
+            return self.authenticate_with_token(token_data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid GMAIL_TOKEN_JSON: {e}")
+            return False
+
+    def _create_flow(self) -> Flow:
+        """Create OAuth2 flow for web application."""
+        if not self.client_id or not self.client_secret:
+            raise ValueError(
+                "Gmail OAuth credentials not configured. "
+                "Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET environment variables."
+            )
+
+        client_config = {
+            'web': {
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+                'token_uri': 'https://oauth2.googleapis.com/token',
+                'redirect_uris': [self.redirect_uri],
+            }
+        }
+
+        return Flow.from_client_config(
+            client_config,
+            scopes=SCOPES,
+            redirect_uri=self.redirect_uri,
+        )
+
+    def is_authenticated(self) -> bool:
+        """Check if client is authenticated and ready."""
+        return self.service is not None and self.creds is not None and self.creds.valid
+
+    def get_token_json(self) -> Optional[str]:
+        """Get current token as JSON string for storage."""
+        if not self.creds:
+            return None
+
+        token_data = {
+            'token': self.creds.token,
+            'refresh_token': self.creds.refresh_token,
+            'token_uri': self.creds.token_uri,
+            'client_id': self.creds.client_id,
+            'client_secret': self.creds.client_secret,
+            'scopes': list(self.creds.scopes) if self.creds.scopes else SCOPES,
+        }
+        return json.dumps(token_data)
 
     def search_emails(
         self,
@@ -94,7 +208,7 @@ class GmailClient:
             List of email metadata dicts
         """
         if not self.service:
-            raise RuntimeError("Not authenticated. Call authenticate() first.")
+            raise RuntimeError("Not authenticated. Call authenticate first.")
 
         # Build search query
         after_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y/%m/%d')
@@ -129,7 +243,7 @@ class GmailClient:
             Dict with email details or None if failed
         """
         if not self.service:
-            raise RuntimeError("Not authenticated. Call authenticate() first.")
+            raise RuntimeError("Not authenticated. Call authenticate first.")
 
         try:
             message = self.service.users().messages().get(
