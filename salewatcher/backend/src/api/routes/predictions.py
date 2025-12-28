@@ -55,10 +55,10 @@ async def list_predictions(
 
 @router.get("/upcoming", response_model=PredictionListResponse)
 async def get_upcoming_predictions(
-    days: int = Query(7, ge=1, le=90),
+    days: int = Query(7, ge=1, le=730),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get predictions starting within the next N days."""
+    """Get predictions starting within the next N days (up to 2 years)."""
     now = datetime.utcnow()
     end_date = now + timedelta(days=days)
 
