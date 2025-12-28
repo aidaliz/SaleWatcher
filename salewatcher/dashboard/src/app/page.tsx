@@ -29,6 +29,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -185,9 +186,10 @@ export default function HomePage() {
             {calendarDays.map((day, index) => (
               <div
                 key={index}
+                onClick={() => day.predictions.length > 0 && setSelectedDay(day)}
                 className={`min-h-[80px] p-1 border rounded-lg ${
                   day.isCurrentMonth ? 'bg-white' : 'bg-gray-50'
-                } ${day.predictions.length > 0 ? 'border-blue-300' : 'border-gray-200'}`}
+                } ${day.predictions.length > 0 ? 'border-blue-300 cursor-pointer hover:bg-blue-50' : 'border-gray-200'}`}
               >
                 <div className={`text-sm ${day.isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
                   {day.date.getDate()}
@@ -215,6 +217,48 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* Prediction Details Modal */}
+      {selectedDay && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedDay(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Predictions for {selectedDay.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </h3>
+              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {selectedDay.predictions.length === 0 ? (
+                <p className="text-gray-500">No predictions for this day.</p>
+              ) : (
+                <div className="space-y-4">
+                  {selectedDay.predictions.map((pred, i) => (
+                    <div key={i} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-gray-900">{pred.brand?.name}</span>
+                        <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                          {Math.round(pred.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                      <p className="text-gray-700 mb-2">{pred.discount_summary}</p>
+                      <div className="text-sm text-gray-500 space-y-1">
+                        <div><strong>Date Range:</strong> {new Date(pred.predicted_start).toLocaleDateString()} - {new Date(pred.predicted_end).toLocaleDateString()}</div>
+                        {pred.categories && pred.categories.length > 0 && (
+                          <div><strong>Categories:</strong> {pred.categories.join(', ')}</div>
+                        )}
+                        {pred.expected_discount && (
+                          <div><strong>Expected Discount:</strong> {pred.expected_discount}%</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent Predictions List */}
       <div className="bg-white rounded-lg shadow">
