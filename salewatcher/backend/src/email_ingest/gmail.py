@@ -194,7 +194,7 @@ class GmailClient:
         self,
         sender_email: str,
         days_back: int = 365,
-        max_results: int = 100,
+        max_results: Optional[int] = None,
     ) -> list[dict]:
         """
         Search for emails from a specific sender.
@@ -202,7 +202,7 @@ class GmailClient:
         Args:
             sender_email: Email address or domain to search for (e.g., "skullcandy.com")
             days_back: How many days of history to search
-            max_results: Maximum number of emails to return
+            max_results: Maximum number of emails to return (None = all emails in date range)
 
         Returns:
             List of email metadata dicts
@@ -217,16 +217,34 @@ class GmailClient:
         logger.info(f"Searching Gmail: {query}")
 
         try:
-            results = self.service.users().messages().list(
-                userId='me',
-                q=query,
-                maxResults=max_results,
-            ).execute()
+            all_messages = []
+            page_token = None
 
-            messages = results.get('messages', [])
-            logger.info(f"Found {len(messages)} emails from {sender_email}")
+            while True:
+                # Gmail API maxResults is capped at 500 per page
+                page_size = min(500, max_results - len(all_messages)) if max_results else 500
 
-            return messages
+                results = self.service.users().messages().list(
+                    userId='me',
+                    q=query,
+                    maxResults=page_size,
+                    pageToken=page_token,
+                ).execute()
+
+                messages = results.get('messages', [])
+                all_messages.extend(messages)
+
+                # Check if we've hit the limit or no more pages
+                if max_results and len(all_messages) >= max_results:
+                    all_messages = all_messages[:max_results]
+                    break
+
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+
+            logger.info(f"Found {len(all_messages)} emails from {sender_email}")
+            return all_messages
 
         except HttpError as e:
             logger.error(f"Gmail search failed: {e}")

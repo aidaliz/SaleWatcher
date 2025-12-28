@@ -145,8 +145,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--limit",
         type=int,
-        default=100,
-        help="Max emails per brand (default: 100)",
+        default=None,
+        help="Max emails per brand (default: unlimited, fetches all within date range)",
     )
 
     args = parser.parse_args()
