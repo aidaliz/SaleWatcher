@@ -87,12 +87,17 @@ class EmailIngestionService:
                     stats['duplicates'] += 1
                     continue
 
+                # Convert timezone-aware datetime to naive (database uses TIMESTAMP WITHOUT TIME ZONE)
+                sent_at = email_data['sent_at']
+                if sent_at.tzinfo is not None:
+                    sent_at = sent_at.replace(tzinfo=None)
+
                 # Create new email record
                 raw_email = RawEmail(
                     brand_id=brand.id,
                     milled_url=f"gmail://{msg['id']}",  # Use Gmail message ID as URL
                     subject=email_data['subject'],
-                    sent_at=email_data['sent_at'],
+                    sent_at=sent_at,
                     html_content=email_data['html_content'],
                     scraped_at=datetime.utcnow(),
                 )
