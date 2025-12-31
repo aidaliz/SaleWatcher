@@ -207,3 +207,50 @@ export const accuracyApi = {
   suggestions: (status: string = 'pending') =>
     fetchAPI<any[]>(`/api/accuracy/suggestions?status=${status}`),
 };
+
+// Scrape Types
+export interface ScrapeJob {
+  id: string;
+  brand_id: string;
+  brand_name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  started_at: string | null;
+  completed_at: string | null;
+  emails_scraped: number;
+  emails_extracted: number;
+  predictions_generated: number;
+  error: string | null;
+  current_step: string;
+}
+
+export interface ScrapeRequest {
+  days_back?: number;
+  max_emails?: number;
+  run_extraction?: boolean;
+  run_predictions?: boolean;
+}
+
+export interface BrandStats {
+  brand_id: string;
+  brand_name: string;
+  total_emails: number;
+  extracted_sales: number;
+  pending_review: number;
+  predictions: number;
+}
+
+// Scrape API
+export const scrapeApi = {
+  startScrape: (brandSlug: string, request: ScrapeRequest = {}) =>
+    fetchAPI<{ job_id: string; message: string }>(`/api/scrape/brand/${brandSlug}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  getJob: (jobId: string) => fetchAPI<ScrapeJob>(`/api/scrape/jobs/${jobId}`),
+
+  listJobs: () => fetchAPI<ScrapeJob[]>('/api/scrape/jobs'),
+
+  getBrandStats: (brandSlug: string) =>
+    fetchAPI<BrandStats>(`/api/scrape/brand/${brandSlug}/stats`),
+};

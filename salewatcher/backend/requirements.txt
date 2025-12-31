@@ -19,6 +19,7 @@ httpx==0.26.0
 
 # Scraping
 playwright==1.41.0
+playwright-stealth==1.0.6
 
 # LLM
 anthropic==0.18.1

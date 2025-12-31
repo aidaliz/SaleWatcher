@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const navItems = [
   { href: '/', label: 'Overview', icon: '📊' },
   { href: '/brands', label: 'Brands', icon: '🏷️' },
+  { href: '/scrape', label: 'Scrape Emails', icon: '📧' },
   { href: '/predictions', label: 'Predictions', icon: '🔮' },
   { href: '/review', label: 'Review Queue', icon: '📋' },
   { href: '/accuracy', label: 'Accuracy', icon: '🎯' },
