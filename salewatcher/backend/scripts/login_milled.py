@@ -17,7 +17,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+
+# Handle different versions of playwright-stealth
+try:
+    from playwright_stealth import stealth_async
+except ImportError:
+    try:
+        from playwright_stealth import Stealth
+        async def stealth_async(page):
+            stealth = Stealth()
+            await stealth.apply(page)
+    except ImportError:
+        async def stealth_async(page):
+            pass
 
 COOKIES_PATH = Path(__file__).parent.parent / "src" / "scraper" / ".cookies.json"
 USER_DATA_DIR = Path(__file__).parent.parent / ".browser_data"

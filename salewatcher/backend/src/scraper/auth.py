@@ -4,7 +4,20 @@ from pathlib import Path
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from playwright_stealth import stealth_async
+
+# Handle different versions of playwright-stealth
+try:
+    from playwright_stealth import stealth_async
+except ImportError:
+    try:
+        from playwright_stealth import Stealth
+        async def stealth_async(page):
+            stealth = Stealth()
+            await stealth.apply(page)
+    except ImportError:
+        # Fallback: no stealth available
+        async def stealth_async(page):
+            pass
 
 from src.config import settings
 
