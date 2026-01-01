@@ -301,3 +301,67 @@ export const gmailApi = {
       body: JSON.stringify({ days_back: daysBack, max_emails: maxEmails }),
     }),
 };
+
+// Email Types
+export interface Email {
+  id: string;
+  brand_id: string;
+  brand_name: string;
+  subject: string;
+  sent_at: string;
+  source: 'gmail' | 'milled';
+  scraped_at: string;
+  is_extracted: boolean;
+  is_sale: boolean | null;
+  discount_summary: string | null;
+  confidence: number | null;
+  review_status: string | null;
+}
+
+export interface EmailListResponse {
+  emails: Email[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface EmailStats {
+  total_emails: number;
+  gmail_emails: number;
+  milled_emails: number;
+  extracted: number;
+  not_extracted: number;
+  sales_found: number;
+  non_sales: number;
+  pending_review: number;
+  by_brand: Array<{
+    brand_id: string;
+    brand_name: string;
+    total: number;
+    gmail: number;
+    milled: number;
+  }>;
+}
+
+// Emails API
+export const emailsApi = {
+  list: (params?: {
+    skip?: number;
+    limit?: number;
+    brand_id?: string;
+    source?: 'gmail' | 'milled';
+    extracted?: boolean;
+    is_sale?: boolean;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.skip) searchParams.set('skip', params.skip.toString());
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.brand_id) searchParams.set('brand_id', params.brand_id);
+    if (params?.source) searchParams.set('source', params.source);
+    if (params?.extracted !== undefined) searchParams.set('extracted', params.extracted.toString());
+    if (params?.is_sale !== undefined) searchParams.set('is_sale', params.is_sale.toString());
+    return fetchAPI<EmailListResponse>(`/api/emails?${searchParams.toString()}`);
+  },
+
+  stats: () => fetchAPI<EmailStats>('/api/emails/stats'),
+};

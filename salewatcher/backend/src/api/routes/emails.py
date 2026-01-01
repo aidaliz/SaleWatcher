@@ -1,0 +1,231 @@
+"""
+API routes for viewing emails and extractions.
+"""
+from datetime import datetime
+from typing import Optional, Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import select, func, case, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from src.api.deps import get_db
+from src.db.models import RawEmail, ExtractedSale, Brand
+
+router = APIRouter()
+
+
+class EmailResponse(BaseModel):
+    """Response for a single email."""
+    id: str
+    brand_id: str
+    brand_name: str
+    subject: str
+    sent_at: datetime
+    source: str  # 'gmail' or 'milled'
+    scraped_at: datetime
+    # Extraction info
+    is_extracted: bool
+    is_sale: Optional[bool] = None
+    discount_summary: Optional[str] = None
+    confidence: Optional[float] = None
+    review_status: Optional[str] = None
+
+
+class EmailListResponse(BaseModel):
+    """Response for email list."""
+    emails: list[EmailResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class EmailStatsResponse(BaseModel):
+    """Statistics about emails."""
+    total_emails: int
+    gmail_emails: int
+    milled_emails: int
+    extracted: int
+    not_extracted: int
+    sales_found: int
+    non_sales: int
+    pending_review: int
+    by_brand: list[dict]
+
+
+@router.get("", response_model=EmailListResponse)
+async def list_emails(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    brand_id: Optional[UUID] = None,
+    source: Optional[Literal["gmail", "milled"]] = None,
+    extracted: Optional[bool] = None,
+    is_sale: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List emails with their extraction status.
+
+    Filters:
+    - brand_id: Filter by brand
+    - source: Filter by source ('gmail' or 'milled')
+    - extracted: Filter by extraction status
+    - is_sale: Filter by whether the email contains a sale
+    """
+    # Build query
+    query = (
+        select(RawEmail)
+        .options(
+            joinedload(RawEmail.brand),
+            joinedload(RawEmail.extracted_sale),
+        )
+        .order_by(desc(RawEmail.sent_at))
+    )
+
+    # Apply filters
+    if brand_id:
+        query = query.where(RawEmail.brand_id == brand_id)
+
+    if source == "gmail":
+        query = query.where(RawEmail.milled_url.startswith("gmail://"))
+    elif source == "milled":
+        query = query.where(~RawEmail.milled_url.startswith("gmail://"))
+
+    if extracted is not None:
+        if extracted:
+            query = query.where(RawEmail.extracted_sale != None)
+        else:
+            query = query.where(RawEmail.extracted_sale == None)
+
+    if is_sale is not None:
+        query = query.join(ExtractedSale).where(ExtractedSale.is_sale == is_sale)
+
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # Apply pagination
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    emails = result.unique().scalars().all()
+
+    # Convert to response
+    email_responses = []
+    for email in emails:
+        source_type = "gmail" if email.milled_url.startswith("gmail://") else "milled"
+        extraction = email.extracted_sale
+
+        email_responses.append(EmailResponse(
+            id=str(email.id),
+            brand_id=str(email.brand_id),
+            brand_name=email.brand.name if email.brand else "Unknown",
+            subject=email.subject,
+            sent_at=email.sent_at,
+            source=source_type,
+            scraped_at=email.scraped_at,
+            is_extracted=extraction is not None,
+            is_sale=extraction.is_sale if extraction else None,
+            discount_summary=extraction.discount_summary if extraction else None,
+            confidence=extraction.confidence if extraction else None,
+            review_status=extraction.review_status.value if extraction and extraction.review_status else None,
+        ))
+
+    return EmailListResponse(
+        emails=email_responses,
+        total=total or 0,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/stats", response_model=EmailStatsResponse)
+async def get_email_stats(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get statistics about emails and extractions.
+    """
+    # Total emails
+    total_query = select(func.count()).select_from(RawEmail)
+    total_emails = await db.scalar(total_query) or 0
+
+    # Gmail vs Milled
+    gmail_query = select(func.count()).select_from(RawEmail).where(
+        RawEmail.milled_url.startswith("gmail://")
+    )
+    gmail_emails = await db.scalar(gmail_query) or 0
+    milled_emails = total_emails - gmail_emails
+
+    # Extracted vs not
+    extracted_query = (
+        select(func.count())
+        .select_from(RawEmail)
+        .join(ExtractedSale, RawEmail.id == ExtractedSale.raw_email_id)
+    )
+    extracted = await db.scalar(extracted_query) or 0
+    not_extracted = total_emails - extracted
+
+    # Sales found
+    sales_query = (
+        select(func.count())
+        .select_from(ExtractedSale)
+        .where(ExtractedSale.is_sale == True)
+    )
+    sales_found = await db.scalar(sales_query) or 0
+
+    # Non-sales
+    non_sales_query = (
+        select(func.count())
+        .select_from(ExtractedSale)
+        .where(ExtractedSale.is_sale == False)
+    )
+    non_sales = await db.scalar(non_sales_query) or 0
+
+    # Pending review
+    pending_query = (
+        select(func.count())
+        .select_from(ExtractedSale)
+        .where(ExtractedSale.review_status == "pending")
+    )
+    pending_review = await db.scalar(pending_query) or 0
+
+    # Stats by brand
+    brand_stats_query = (
+        select(
+            Brand.id,
+            Brand.name,
+            func.count(RawEmail.id).label("total"),
+            func.sum(case((RawEmail.milled_url.startswith("gmail://"), 1), else_=0)).label("gmail"),
+            func.sum(case((~RawEmail.milled_url.startswith("gmail://"), 1), else_=0)).label("milled"),
+        )
+        .select_from(Brand)
+        .join(RawEmail, Brand.id == RawEmail.brand_id)
+        .group_by(Brand.id, Brand.name)
+        .order_by(desc("total"))
+    )
+    brand_result = await db.execute(brand_stats_query)
+    brand_stats = [
+        {
+            "brand_id": str(row.id),
+            "brand_name": row.name,
+            "total": row.total,
+            "gmail": row.gmail or 0,
+            "milled": row.milled or 0,
+        }
+        for row in brand_result
+    ]
+
+    return EmailStatsResponse(
+        total_emails=total_emails,
+        gmail_emails=gmail_emails,
+        milled_emails=milled_emails,
+        extracted=extracted,
+        not_extracted=not_extracted,
+        sales_found=sales_found,
+        non_sales=non_sales,
+        pending_review=pending_review,
+        by_brand=brand_stats,
+    )
