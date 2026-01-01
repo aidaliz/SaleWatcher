@@ -23,7 +23,7 @@ async def main():
         sys.exit(1)
 
     brand_slug = sys.argv[1]
-    brand_url = f"https://milled.com/stores/{brand_slug}"
+    brand_url = f"https://milled.com/{brand_slug}"
 
     print(f"Testing scrape for: {brand_url}")
     print(f"Using browser data from: {USER_DATA_DIR}")

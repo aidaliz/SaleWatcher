@@ -57,7 +57,7 @@ class MilledScraper:
         """
         logger.info(f"Scraping {brand.name} (slug: {brand.milled_slug})")
 
-        brand_url = f"{self.BASE_URL}/stores/{brand.milled_slug}"
+        brand_url = f"{self.BASE_URL}/{brand.milled_slug}"
         await self.page.goto(brand_url, wait_until="networkidle")
 
         # Debug: Log current URL and page state
