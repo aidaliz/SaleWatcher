@@ -89,6 +89,21 @@ async def main():
             else:
                 print("No email-related links found")
 
+            # Print sample of all hrefs to find pattern
+            print("\nSample of all link hrefs (first 30):")
+            for i, link in enumerate(all_links[:30]):
+                href = await link.get_attribute("href")
+                if href and href.startswith("/"):
+                    print(f"  {href}")
+
+            # Try to find newsletter/promotion links
+            print("\nLooking for newsletter article links...")
+            article_links = await page.query_selector_all('a[href*="/p/"]')
+            print(f"Found {len(article_links)} links with '/p/' pattern")
+            for link in article_links[:5]:
+                href = await link.get_attribute("href")
+                print(f"  {href}")
+
             # Save screenshot
             screenshot_path = Path(__file__).parent.parent / "debug_screenshot.png"
             await page.screenshot(path=str(screenshot_path))
