@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Gmail OAuth
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
-    gmail_redirect_uri: str = "http://localhost:8000/api/email/oauth/callback"
+    gmail_redirect_uri: str = "http://localhost:8000/api/email/gmail/auth/callback"
 
     # Resend email
     resend_api_key: str = ""

@@ -46,7 +46,7 @@ class GmailClient:
         """
         self.client_id = client_id or os.getenv('GMAIL_CLIENT_ID')
         self.client_secret = client_secret or os.getenv('GMAIL_CLIENT_SECRET')
-        self.redirect_uri = redirect_uri or os.getenv('GMAIL_REDIRECT_URI', 'http://localhost:8000/api/email/oauth/callback')
+        self.redirect_uri = redirect_uri or os.getenv('GMAIL_REDIRECT_URI', 'http://localhost:8000/api/email/gmail/auth/callback')
 
         self.service = None
         self.creds = None
