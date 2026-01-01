@@ -105,73 +105,6 @@ async def get_upcoming_predictions(
     )
 
 
-@router.get("/{prediction_id}", response_model=PredictionResponse)
-async def get_prediction(
-    prediction_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    """Get a prediction by ID."""
-    query = (
-        select(Prediction)
-        .options(selectinload(Prediction.brand))
-        .where(Prediction.id == prediction_id)
-    )
-    result = await db.execute(query)
-    prediction = result.scalar_one_or_none()
-
-    if prediction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prediction not found",
-        )
-
-    return PredictionResponse.model_validate(prediction)
-
-
-@router.post("/{prediction_id}/override", response_model=PredictionResponse)
-async def override_prediction(
-    prediction_id: UUID,
-    override: PredictionOverride,
-    db: AsyncSession = Depends(get_db),
-):
-    """Override prediction outcome with manual result."""
-    # Get prediction
-    query = (
-        select(Prediction)
-        .options(selectinload(Prediction.brand), selectinload(Prediction.outcome))
-        .where(Prediction.id == prediction_id)
-    )
-    result = await db.execute(query)
-    prediction = result.scalar_one_or_none()
-
-    if prediction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prediction not found",
-        )
-
-    # Create or update outcome
-    if prediction.outcome is None:
-        outcome = PredictionOutcome(
-            prediction_id=prediction_id,
-            result=override.result,
-            is_override=True,
-            override_reason=override.reason,
-            verified_at=datetime.utcnow(),
-        )
-        db.add(outcome)
-    else:
-        prediction.outcome.result = override.result
-        prediction.outcome.is_override = True
-        prediction.outcome.override_reason = override.reason
-        prediction.outcome.verified_at = datetime.utcnow()
-
-    await db.flush()
-    await db.refresh(prediction)
-
-    return PredictionResponse.model_validate(prediction)
-
-
 @router.get("/stats", response_model=PredictionStats)
 async def get_prediction_stats(
     db: AsyncSession = Depends(get_db),
@@ -270,3 +203,70 @@ async def generate_predictions_endpoint(
         predictions_created=predictions_created,
         message=f"Created {windows_created} sale windows and {predictions_created} predictions",
     )
+
+
+@router.get("/{prediction_id}", response_model=PredictionResponse)
+async def get_prediction(
+    prediction_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a prediction by ID."""
+    query = (
+        select(Prediction)
+        .options(selectinload(Prediction.brand))
+        .where(Prediction.id == prediction_id)
+    )
+    result = await db.execute(query)
+    prediction = result.scalar_one_or_none()
+
+    if prediction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction not found",
+        )
+
+    return PredictionResponse.model_validate(prediction)
+
+
+@router.post("/{prediction_id}/override", response_model=PredictionResponse)
+async def override_prediction(
+    prediction_id: UUID,
+    override: PredictionOverride,
+    db: AsyncSession = Depends(get_db),
+):
+    """Override prediction outcome with manual result."""
+    # Get prediction
+    query = (
+        select(Prediction)
+        .options(selectinload(Prediction.brand), selectinload(Prediction.outcome))
+        .where(Prediction.id == prediction_id)
+    )
+    result = await db.execute(query)
+    prediction = result.scalar_one_or_none()
+
+    if prediction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction not found",
+        )
+
+    # Create or update outcome
+    if prediction.outcome is None:
+        outcome = PredictionOutcome(
+            prediction_id=prediction_id,
+            result=override.result,
+            is_override=True,
+            override_reason=override.reason,
+            verified_at=datetime.utcnow(),
+        )
+        db.add(outcome)
+    else:
+        prediction.outcome.result = override.result
+        prediction.outcome.is_override = True
+        prediction.outcome.override_reason = override.reason
+        prediction.outcome.verified_at = datetime.utcnow()
+
+    await db.flush()
+    await db.refresh(prediction)
+
+    return PredictionResponse.model_validate(prediction)
