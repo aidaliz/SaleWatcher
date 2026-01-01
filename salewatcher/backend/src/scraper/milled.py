@@ -132,22 +132,25 @@ class MilledScraper:
         while emails_found < max_emails and scroll_attempts < max_scroll_attempts:
             # Get all email links on page - links that start with /{brand_slug}/ and have more path
             # Email links look like: /BathBodyWorks/some-email-title-abc123
-            all_brand_links = await self.page.query_selector_all(f'a[href^="/{brand.milled_slug}/"]')
+            # Note: Use case-insensitive matching since Milled URLs may vary in case
+            slug_lower = brand.milled_slug.lower()
+            all_links = await self.page.query_selector_all('a[href]')
 
-            # Filter out links that are just the brand page itself
+            # Filter to find brand email links (case-insensitive)
             email_links = []
-            for link in all_brand_links:
+            for link in all_links:
                 href = await link.get_attribute("href")
-                # Must have content after /{brand_slug}/
-                if href and len(href) > len(f"/{brand.milled_slug}/") + 5:
-                    email_links.append(link)
+                if not href:
+                    continue
+                href_lower = href.lower()
+                # Check if it's a brand email link (starts with /{slug}/ and has more content)
+                if href_lower.startswith(f"/{slug_lower}/") and len(href) > len(f"/{slug_lower}/") + 5:
+                    email_links.append((link, href))
 
             # Debug: Log number of links found on first scroll
             if scroll_attempts == 0:
                 logger.info(f"Found {len(email_links)} email links on page")
                 if len(email_links) == 0:
-                    # Try alternative selectors
-                    all_links = await self.page.query_selector_all('a')
                     logger.info(f"Total links on page: {len(all_links)}")
                     # Log first few href values for debugging
                     for i, link in enumerate(all_links[:10]):
@@ -158,12 +161,11 @@ class MilledScraper:
                     await self.page.screenshot(path=str(screenshot_path))
                     logger.info(f"Debug screenshot saved to: {screenshot_path}")
 
-            for link in email_links:
+            for link, href in email_links:
                 if emails_found >= max_emails:
                     break
 
-                href = await link.get_attribute("href")
-                if not href or href in seen_urls:
+                if href in seen_urls:
                     continue
 
                 full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
