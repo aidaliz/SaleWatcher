@@ -104,6 +104,15 @@ class MilledScraper:
                         # Wait for page to fully load after challenge
                         await self.page.wait_for_load_state("networkidle")
                         print(f"Page loaded. Current URL: {self.page.url}")
+
+                        # After Cloudflare, browser often redirects to dashboard
+                        # We need to navigate back to the brand page
+                        current_url = self.page.url.lower()
+                        expected_path = f"/{brand.milled_slug.lower()}"
+                        if expected_path not in current_url:
+                            print(f"Redirected away from brand page. Navigating back to {brand_url}...")
+                            await self.page.goto(brand_url, wait_until="networkidle", timeout=60000)
+                            print(f"Now at: {self.page.url}")
                         break
                 else:
                     logger.error("Cloudflare challenge not completed in time")
