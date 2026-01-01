@@ -21,6 +21,9 @@ export default function EmailsPage() {
   const [batchExtracting, setBatchExtracting] = useState(false);
   const [batchLimit, setBatchLimit] = useState(50);
 
+  // Updating extraction
+  const [updating, setUpdating] = useState(false);
+
   // Filters
   const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [selectedSource, setSelectedSource] = useState<'gmail' | 'milled' | ''>('');
@@ -120,6 +123,25 @@ export default function EmailsPage() {
       setError(err instanceof Error ? err.message : 'Failed to run batch extraction');
     } finally {
       setBatchExtracting(false);
+    }
+  };
+
+  const handleMarkAsSale = async (isSale: boolean) => {
+    if (!selectedEmail) return;
+    try {
+      setUpdating(true);
+      setError(null);
+      await emailsApi.updateExtraction(selectedEmail.id, { is_sale: isSale });
+      setSuccess(`Email marked as ${isSale ? 'Sale' : 'Not Sale'}`);
+      // Refresh the email detail
+      const detail = await emailsApi.get(selectedEmail.id);
+      setSelectedEmail(detail);
+      // Refresh the list
+      fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update extraction');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -496,6 +518,32 @@ export default function EmailsPage() {
                       )}
                     </div>
                     <div className="flex gap-2">
+                      {selectedEmail.is_extracted && (
+                        <>
+                          <button
+                            onClick={() => handleMarkAsSale(true)}
+                            disabled={updating || selectedEmail.is_sale}
+                            className={`px-4 py-2 rounded-lg font-medium ${
+                              updating || selectedEmail.is_sale
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            }`}
+                          >
+                            {selectedEmail.is_sale ? '✓ Sale' : 'Mark as Sale'}
+                          </button>
+                          <button
+                            onClick={() => handleMarkAsSale(false)}
+                            disabled={updating || !selectedEmail.is_sale}
+                            className={`px-4 py-2 rounded-lg font-medium ${
+                              updating || !selectedEmail.is_sale
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-600 text-white hover:bg-gray-700'
+                            }`}
+                          >
+                            {!selectedEmail.is_sale ? '✓ Not Sale' : 'Mark as Not Sale'}
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={handleExtract}
                         disabled={extracting}

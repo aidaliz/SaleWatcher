@@ -402,4 +402,13 @@ export const emailsApi = {
         body: JSON.stringify(params),
       }
     ),
+
+  updateExtraction: (id: string, params: { is_sale?: boolean; notes?: string }) =>
+    fetchAPI<{ status: string; message: string; is_sale: boolean }>(
+      `/api/emails/${id}/extraction`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(params),
+      }
+    ),
 };

@@ -397,3 +397,50 @@ async def extract_batch(
         errors=result["errors"],
         message=f"Extracted {result['processed']} emails, {result['errors']} errors",
     )
+
+
+class UpdateExtractionRequest(BaseModel):
+    """Request to update an extraction."""
+    is_sale: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@router.patch("/{email_id}/extraction")
+async def update_extraction(
+    email_id: UUID,
+    request: UpdateExtractionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update an extraction's is_sale status (manual override).
+    """
+    from fastapi import HTTPException, status
+    from datetime import datetime
+
+    # Get the extraction for this email
+    query = select(ExtractedSale).where(ExtractedSale.raw_email_id == email_id)
+    result = await db.execute(query)
+    extraction = result.scalar_one_or_none()
+
+    if not extraction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No extraction found for this email",
+        )
+
+    # Update fields
+    if request.is_sale is not None:
+        extraction.is_sale = request.is_sale
+        extraction.status = ExtractionStatus.APPROVED
+        extraction.reviewed_at = datetime.utcnow()
+
+    if request.notes is not None:
+        extraction.review_notes = request.notes
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Extraction updated: is_sale={extraction.is_sale}",
+        "is_sale": extraction.is_sale,
+    }
