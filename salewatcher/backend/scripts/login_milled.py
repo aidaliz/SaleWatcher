@@ -19,17 +19,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from playwright.async_api import async_playwright
 
 # Handle different versions of playwright-stealth
-try:
-    from playwright_stealth import stealth_async
-except ImportError:
+async def stealth_async(page):
+    """Apply stealth settings to bypass bot detection."""
     try:
-        from playwright_stealth import Stealth
-        async def stealth_async(page):
-            stealth = Stealth()
-            await stealth.apply(page)
+        from playwright_stealth import stealth_async as _stealth
+        await _stealth(page)
     except ImportError:
-        async def stealth_async(page):
-            pass
+        try:
+            from playwright_stealth import Stealth
+            stealth = Stealth()
+            # Try different methods depending on version
+            if hasattr(stealth, 'apply_stealth'):
+                await stealth.apply_stealth(page)
+            elif callable(stealth):
+                await stealth(page)
+            else:
+                print("Note: Could not apply stealth, continuing without it")
+        except Exception:
+            print("Note: playwright-stealth not available, continuing without it")
 
 COOKIES_PATH = Path(__file__).parent.parent / "src" / "scraper" / ".cookies.json"
 USER_DATA_DIR = Path(__file__).parent.parent / ".browser_data"

@@ -6,18 +6,21 @@ from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
 # Handle different versions of playwright-stealth
-try:
-    from playwright_stealth import stealth_async
-except ImportError:
+async def stealth_async(page):
+    """Apply stealth settings to bypass bot detection."""
     try:
-        from playwright_stealth import Stealth
-        async def stealth_async(page):
-            stealth = Stealth()
-            await stealth.apply(page)
+        from playwright_stealth import stealth_async as _stealth
+        await _stealth(page)
     except ImportError:
-        # Fallback: no stealth available
-        async def stealth_async(page):
-            pass
+        try:
+            from playwright_stealth import Stealth
+            stealth = Stealth()
+            if hasattr(stealth, 'apply_stealth'):
+                await stealth.apply_stealth(page)
+            elif callable(stealth):
+                await stealth(page)
+        except Exception:
+            pass  # Continue without stealth
 
 from src.config import settings
 
