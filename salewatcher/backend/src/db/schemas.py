@@ -12,7 +12,7 @@ from src.db.models import DiscountType, ExtractionStatus, PredictionResult, Sugg
 class BrandBase(BaseModel):
     """Base schema for brand data."""
     name: str = Field(..., min_length=1, max_length=255)
-    milled_slug: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-z0-9-]+$")
+    milled_slug: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9-]+$")
     excluded_categories: list[str] = Field(default_factory=list)
 
 
@@ -24,7 +24,7 @@ class BrandCreate(BrandBase):
 class BrandUpdate(BaseModel):
     """Schema for updating a brand."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    milled_slug: Optional[str] = Field(None, min_length=1, max_length=255, pattern=r"^[a-z0-9-]+$")
+    milled_slug: Optional[str] = Field(None, min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9-]+$")
     is_active: Optional[bool] = None
     excluded_categories: Optional[list[str]] = None
 
