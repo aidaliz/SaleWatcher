@@ -393,4 +393,13 @@ export const emailsApi = {
     fetchAPI<{ status: string; message: string; result: any }>(`/api/emails/${id}/extract`, {
       method: 'POST',
     }),
+
+  extractBatch: (params: { brand_id?: string; limit?: number; reprocess?: boolean }) =>
+    fetchAPI<{ status: string; total: number; processed: number; errors: number; message: string }>(
+      '/api/emails/extract-batch',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    ),
 };

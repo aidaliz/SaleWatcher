@@ -342,10 +342,58 @@ async def extract_email(
 
     # Run extraction
     service = ExtractionService()
-    extraction_result = await service.extract_single_email(db, email)
+    extraction_result = await service.extract_single_email(db, email, reprocess=True)
 
     return {
         "status": "success",
         "message": f"Extraction completed for email: {email.subject}",
         "result": extraction_result,
     }
+
+
+class BatchExtractRequest(BaseModel):
+    """Request for batch extraction."""
+    brand_id: Optional[UUID] = None
+    limit: int = 100
+    reprocess: bool = False
+
+
+class BatchExtractResponse(BaseModel):
+    """Response for batch extraction."""
+    status: str
+    total: int
+    processed: int
+    errors: int
+    message: str
+
+
+@router.post("/extract-batch", response_model=BatchExtractResponse)
+async def extract_batch(
+    request: BatchExtractRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Extract sale information from multiple emails.
+
+    Options:
+    - brand_id: Filter to specific brand
+    - limit: Maximum emails to process (default 100)
+    - reprocess: Re-extract already processed emails
+    """
+    from src.extraction import ExtractionService
+
+    service = ExtractionService()
+    result = await service.extract_batch(
+        db,
+        brand_id=request.brand_id,
+        limit=request.limit,
+        reprocess=request.reprocess,
+    )
+
+    return BatchExtractResponse(
+        status="success",
+        total=result["total"],
+        processed=result["processed"],
+        errors=result["errors"],
+        message=f"Extracted {result['processed']} emails, {result['errors']} errors",
+    )
