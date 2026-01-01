@@ -52,8 +52,9 @@ export default function PredictionsPage() {
       setTotal(predictionsData.total);
       setStats(statsData);
       setBrands(brandsData.brands);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+    } catch (err: any) {
+      const message = err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      setError(message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -76,8 +77,9 @@ export default function PredictionsPage() {
 
       setSuccess(result.message);
       fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate predictions');
+    } catch (err: any) {
+      const message = err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      setError(message || 'Failed to generate predictions');
     } finally {
       setGenerating(false);
     }

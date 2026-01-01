@@ -6,8 +6,13 @@ Supports web-based OAuth2 flow for Gmail authentication.
 import json
 import os
 import secrets
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
+
+# Get the backend directory for absolute .env path
+BACKEND_DIR = Path(__file__).parent.parent.parent.parent
+ENV_FILE_PATH = BACKEND_DIR / '.env'
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
@@ -180,10 +185,10 @@ async def configure_gmail(request: GmailConfigRequest):
             detail="Both client_id and client_secret are required",
         )
 
-    # Read existing .env file
-    env_path = '.env'
+    # Read existing .env file (use absolute path)
+    env_path = ENV_FILE_PATH
     env_lines = []
-    if os.path.exists(env_path):
+    if env_path.exists():
         with open(env_path, 'r') as f:
             env_lines = f.readlines()
 
