@@ -56,13 +56,22 @@ class MilledScraper:
             List of newly scraped RawEmail objects
         """
         logger.info(f"Scraping {brand.name} (slug: {brand.milled_slug})")
+        print(f"\n=== Starting scrape for {brand.name} (slug: {brand.milled_slug}) ===")
 
         brand_url = f"{self.BASE_URL}/{brand.milled_slug}"
-        await self.page.goto(brand_url, wait_until="networkidle")
+        print(f"Navigating to: {brand_url}")
+
+        try:
+            await self.page.goto(brand_url, wait_until="networkidle", timeout=60000)
+        except Exception as e:
+            print(f"ERROR during navigation: {e}")
+            logger.error(f"Navigation failed: {e}")
+            raise
 
         # Debug: Log current URL and page state
         current_url = self.page.url
         logger.info(f"Navigated to: {current_url}")
+        print(f"Current URL: {current_url}")
 
         # Check for Cloudflare challenge - look for specific challenge indicators
         page_content = await self.page.content()
@@ -91,8 +100,10 @@ class MilledScraper:
                     )
                     if not is_still_challenge:
                         logger.info("Cloudflare challenge completed!")
+                        print("Cloudflare challenge completed! Waiting for page to load...")
                         # Wait for page to fully load after challenge
                         await self.page.wait_for_load_state("networkidle")
+                        print(f"Page loaded. Current URL: {self.page.url}")
                         break
                 else:
                     logger.error("Cloudflare challenge not completed in time")
@@ -105,11 +116,17 @@ class MilledScraper:
                 logger.info(f"Debug screenshot saved to: {screenshot_path}")
                 return []
 
+        # Refresh page content after potential Cloudflare check
+        page_content = await self.page.content()
+        print(f"Page title: {await self.page.title()}")
+
         # Check if brand page exists
         if "not found" in page_content.lower():
             logger.error(f"Brand page not found: {brand_url}")
+            print(f"ERROR: Brand page not found: {brand_url}")
             return []
 
+        print("Brand page loaded successfully. Starting email extraction...")
         scraped_emails = []
         seen_urls = set()
 
@@ -150,8 +167,15 @@ class MilledScraper:
             # Debug: Log number of links found on first scroll
             if scroll_attempts == 0:
                 logger.info(f"Found {len(email_links)} email links on page")
+                print(f"Found {len(email_links)} email links matching slug '{slug_lower}'")
                 if len(email_links) == 0:
                     logger.info(f"Total links on page: {len(all_links)}")
+                    print(f"Total links on page: {len(all_links)}")
+                    # Log sample hrefs for debugging
+                    print("Sample links found on page:")
+                    for i, link in enumerate(all_links[:15]):
+                        href = await link.get_attribute("href")
+                        print(f"  {i+1}. {href}")
                     # Log first few href values for debugging
                     for i, link in enumerate(all_links[:10]):
                         href = await link.get_attribute("href")

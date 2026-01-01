@@ -250,8 +250,12 @@ async def run_scrape_pipeline(
                     await db.commit()
                     job.emails_scraped = len(emails)
                     logger.info(f"[Job {job_id}] Scraped {len(emails)} emails")
+                    print(f"\n=== Scraping complete: {len(emails)} emails scraped ===\n")
             except Exception as e:
-                logger.error(f"[Job {job_id}] Scrape error: {e}")
+                import traceback
+                error_details = traceback.format_exc()
+                logger.error(f"[Job {job_id}] Scrape error: {e}\n{error_details}")
+                print(f"\n=== SCRAPE ERROR ===\n{error_details}\n")
                 # Continue with existing emails if scraping fails
                 job.current_step = f"Scrape failed: {str(e)[:100]}. Continuing with existing emails..."
 
