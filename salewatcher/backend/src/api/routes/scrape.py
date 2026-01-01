@@ -53,8 +53,8 @@ _jobs: dict[str, ScrapeJob] = {}
 
 
 class ScrapeRequest(BaseModel):
-    days_back: int = 365
-    max_emails: int = 500
+    days_back: int = 730  # 2 years of history
+    max_emails: int = 2000  # Increased for larger brands
     run_extraction: bool = True
     run_predictions: bool = True
 

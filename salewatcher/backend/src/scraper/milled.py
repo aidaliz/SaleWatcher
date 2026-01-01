@@ -41,8 +41,8 @@ class MilledScraper:
     async def scrape_brand(
         self,
         brand: Brand,
-        days_back: int = 365,
-        max_emails: int = 500,
+        days_back: int = 730,  # 2 years of history
+        max_emails: int = 2000,  # Increased limit
     ) -> list[RawEmail]:
         """
         Scrape emails for a brand from the past N days.
@@ -95,7 +95,7 @@ class MilledScraper:
         # Scroll and load emails
         emails_found = 0
         scroll_attempts = 0
-        max_scroll_attempts = 50
+        max_scroll_attempts = 100  # Increased for larger brands
 
         prev_link_count = 0
         while emails_found < max_emails and scroll_attempts < max_scroll_attempts:
