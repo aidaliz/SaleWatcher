@@ -64,6 +64,7 @@ class MilledAuth:
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(USER_DATA_DIR),
             headless=self.headless,
+            channel="chrome",  # Use real Chrome browser to bypass Cloudflare
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",

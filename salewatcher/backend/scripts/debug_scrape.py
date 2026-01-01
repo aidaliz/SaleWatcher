@@ -38,6 +38,7 @@ async def main():
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(USER_DATA_DIR),
             headless=False,  # VISIBLE for debugging
+            channel="chrome",  # Use real Chrome browser
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
