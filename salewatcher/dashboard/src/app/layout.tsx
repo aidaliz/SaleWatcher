@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-gray-50">
         <div className="flex">
           {/* Sidebar */}
-          <aside className="fixed inset-y-0 left-0 w-64 bg-gray-900 text-white">
+          <aside className="fixed inset-y-0 left-0 w-64 bg-gray-900 text-white z-40">
             <div className="p-6">
               <h1 className="text-xl font-bold">SaleWatcher</h1>
               <p className="text-sm text-gray-400">Sales Prediction System</p>
