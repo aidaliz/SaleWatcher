@@ -64,18 +64,35 @@ class MilledScraper:
         current_url = self.page.url
         logger.info(f"Navigated to: {current_url}")
 
-        # Check for Cloudflare challenge
+        # Check for Cloudflare challenge - look for specific challenge indicators
         page_content = await self.page.content()
-        if "challenge" in page_content.lower() or "cloudflare" in page_content.lower():
+        page_title = await self.page.title()
+        is_cloudflare_challenge = (
+            "just a moment" in page_title.lower() or
+            "checking your browser" in page_content.lower() or
+            "cf-challenge" in page_content.lower() or
+            "challenge-running" in page_content.lower()
+        )
+
+        if is_cloudflare_challenge:
             if not self.headless:
                 # In visible mode, wait for user to complete Cloudflare challenge
                 logger.warning("Cloudflare challenge detected! Please complete it in the browser window...")
-                # Wait up to 60 seconds for challenge to be completed
-                for i in range(12):
+                # Wait up to 120 seconds for challenge to be completed
+                for i in range(24):
                     await asyncio.sleep(5)
+                    page_title = await self.page.title()
                     page_content = await self.page.content()
-                    if "challenge" not in page_content.lower() and "cloudflare" not in page_content.lower():
+                    is_still_challenge = (
+                        "just a moment" in page_title.lower() or
+                        "checking your browser" in page_content.lower() or
+                        "cf-challenge" in page_content.lower() or
+                        "challenge-running" in page_content.lower()
+                    )
+                    if not is_still_challenge:
                         logger.info("Cloudflare challenge completed!")
+                        # Wait for page to fully load after challenge
+                        await self.page.wait_for_load_state("networkidle")
                         break
                 else:
                     logger.error("Cloudflare challenge not completed in time")
