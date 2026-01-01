@@ -89,9 +89,9 @@ async def list_emails(
         query = query.where(RawEmail.brand_id == brand_id)
 
     if source == "gmail":
-        query = query.where(RawEmail.milled_url.startswith("gmail://"))
+        query = query.where(RawEmail.milled_url.like("gmail://%"))
     elif source == "milled":
-        query = query.where(~RawEmail.milled_url.startswith("gmail://"))
+        query = query.where(~RawEmail.milled_url.like("gmail://%"))
 
     if extracted is not None:
         if extracted:
@@ -115,7 +115,7 @@ async def list_emails(
     # Convert to response
     email_responses = []
     for email in emails:
-        source_type = "gmail" if email.milled_url.startswith("gmail://") else "milled"
+        source_type = "gmail" if email.milled_url.startswith("gmail://") else "milled"  # Python startswith is fine here
         extraction = email.extracted_sale
 
         email_responses.append(EmailResponse(
@@ -154,7 +154,7 @@ async def get_email_stats(
 
     # Gmail vs Milled
     gmail_query = select(func.count()).select_from(RawEmail).where(
-        RawEmail.milled_url.startswith("gmail://")
+        RawEmail.milled_url.like("gmail://%")
     )
     gmail_emails = await db.scalar(gmail_query) or 0
     milled_emails = total_emails - gmail_emails
@@ -192,14 +192,12 @@ async def get_email_stats(
     )
     pending_review = await db.scalar(pending_query) or 0
 
-    # Stats by brand
+    # Stats by brand - simpler approach without case statements
     brand_stats_query = (
         select(
             Brand.id,
             Brand.name,
             func.count(RawEmail.id).label("total"),
-            func.sum(case((RawEmail.milled_url.startswith("gmail://"), 1), else_=0)).label("gmail"),
-            func.sum(case((~RawEmail.milled_url.startswith("gmail://"), 1), else_=0)).label("milled"),
         )
         .select_from(Brand)
         .join(RawEmail, Brand.id == RawEmail.brand_id)
@@ -207,16 +205,24 @@ async def get_email_stats(
         .order_by(desc("total"))
     )
     brand_result = await db.execute(brand_stats_query)
-    brand_stats = [
-        {
+
+    # Get Gmail counts separately for each brand
+    brand_stats = []
+    for row in brand_result:
+        gmail_count_query = (
+            select(func.count())
+            .select_from(RawEmail)
+            .where(RawEmail.brand_id == row.id)
+            .where(RawEmail.milled_url.like("gmail://%"))
+        )
+        gmail_count = await db.scalar(gmail_count_query) or 0
+        brand_stats.append({
             "brand_id": str(row.id),
             "brand_name": row.name,
             "total": row.total,
-            "gmail": row.gmail or 0,
-            "milled": row.milled or 0,
-        }
-        for row in brand_result
-    ]
+            "gmail": gmail_count,
+            "milled": row.total - gmail_count,
+        })
 
     return EmailStatsResponse(
         total_emails=total_emails,
