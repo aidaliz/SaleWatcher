@@ -57,6 +57,7 @@ class ScrapeRequest(BaseModel):
     max_emails: int = 2000  # Increased for larger brands
     run_extraction: bool = True
     run_predictions: bool = True
+    headless: bool = False  # Default to visible mode to handle Cloudflare
 
 
 class ScrapeResponse(BaseModel):
@@ -138,6 +139,7 @@ async def scrape_brand(
         max_emails=request.max_emails,
         run_extraction=request.run_extraction,
         run_predictions=request.run_predictions,
+        headless=request.headless,
     )
 
     return ScrapeResponse(
@@ -211,6 +213,7 @@ async def run_scrape_pipeline(
     max_emails: int,
     run_extraction: bool,
     run_predictions: bool,
+    headless: bool = False,
 ):
     """
     Run the full scrape -> extract -> predict pipeline.
@@ -238,7 +241,7 @@ async def run_scrape_pipeline(
             logger.info(f"[Job {job_id}] Starting scrape for {brand.name}")
 
             try:
-                async with MilledScraper(db, headless=True) as scraper:
+                async with MilledScraper(db, headless=headless) as scraper:
                     emails = await scraper.scrape_brand(
                         brand,
                         days_back=days_back,

@@ -67,12 +67,26 @@ class MilledScraper:
         # Check for Cloudflare challenge
         page_content = await self.page.content()
         if "challenge" in page_content.lower() or "cloudflare" in page_content.lower():
-            logger.warning("Cloudflare challenge detected! Try running with --visible or re-login.")
-            # Save debug screenshot
-            screenshot_path = Path(__file__).parent.parent.parent / "debug_screenshot.png"
-            await self.page.screenshot(path=str(screenshot_path))
-            logger.info(f"Debug screenshot saved to: {screenshot_path}")
-            return []
+            if not self.headless:
+                # In visible mode, wait for user to complete Cloudflare challenge
+                logger.warning("Cloudflare challenge detected! Please complete it in the browser window...")
+                # Wait up to 60 seconds for challenge to be completed
+                for i in range(12):
+                    await asyncio.sleep(5)
+                    page_content = await self.page.content()
+                    if "challenge" not in page_content.lower() and "cloudflare" not in page_content.lower():
+                        logger.info("Cloudflare challenge completed!")
+                        break
+                else:
+                    logger.error("Cloudflare challenge not completed in time")
+                    return []
+            else:
+                logger.warning("Cloudflare challenge detected! Try running with visible mode or re-login.")
+                # Save debug screenshot
+                screenshot_path = Path(__file__).parent.parent.parent / "debug_screenshot.png"
+                await self.page.screenshot(path=str(screenshot_path))
+                logger.info(f"Debug screenshot saved to: {screenshot_path}")
+                return []
 
         # Check if brand page exists
         if "not found" in page_content.lower():
