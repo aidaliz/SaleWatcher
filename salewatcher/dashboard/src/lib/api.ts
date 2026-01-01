@@ -155,6 +155,22 @@ export const brandsApi = {
 };
 
 // Predictions API
+export interface PredictionStats {
+  total_predictions: number;
+  upcoming_predictions: number;
+  past_predictions: number;
+  total_sale_windows: number;
+  total_extracted_sales: number;
+  by_brand: { brand_id: string; brand_name: string; predictions: number }[];
+}
+
+export interface GeneratePredictionsResponse {
+  status: string;
+  windows_created: number;
+  predictions_created: number;
+  message: string;
+}
+
 export const predictionsApi = {
   list: (params?: { skip?: number; limit?: number; brand_id?: string; target_year?: number }) => {
     const searchParams = new URLSearchParams();
@@ -174,6 +190,14 @@ export const predictionsApi = {
     fetchAPI<Prediction>(`/api/predictions/${id}/override`, {
       method: 'POST',
       body: JSON.stringify({ result, reason }),
+    }),
+
+  stats: () => fetchAPI<PredictionStats>('/api/predictions/stats'),
+
+  generate: (params?: { brand_id?: string; target_year?: number; years_ahead?: number }) =>
+    fetchAPI<GeneratePredictionsResponse>('/api/predictions/generate', {
+      method: 'POST',
+      body: JSON.stringify(params || {}),
     }),
 };
 

@@ -3,12 +3,13 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import get_db
-from src.db.models import Prediction, PredictionOutcome, PredictionResult
+from src.db.models import Prediction, PredictionOutcome, PredictionResult, SaleWindow, ExtractedSale, Brand
 from src.db.schemas import (
     PredictionListResponse,
     PredictionOverride,
@@ -16,6 +17,31 @@ from src.db.schemas import (
 )
 
 router = APIRouter()
+
+
+class PredictionStats(BaseModel):
+    """Statistics about predictions."""
+    total_predictions: int
+    upcoming_predictions: int
+    past_predictions: int
+    total_sale_windows: int
+    total_extracted_sales: int
+    by_brand: list[dict]
+
+
+class GeneratePredictionsRequest(BaseModel):
+    """Request to generate predictions."""
+    brand_id: Optional[UUID] = None
+    target_year: Optional[int] = None
+    years_ahead: int = 1
+
+
+class GeneratePredictionsResponse(BaseModel):
+    """Response from prediction generation."""
+    status: str
+    windows_created: int
+    predictions_created: int
+    message: str
 
 
 @router.get("", response_model=PredictionListResponse)
@@ -144,3 +170,103 @@ async def override_prediction(
     await db.refresh(prediction)
 
     return PredictionResponse.model_validate(prediction)
+
+
+@router.get("/stats", response_model=PredictionStats)
+async def get_prediction_stats(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get prediction statistics."""
+    now = datetime.utcnow()
+
+    # Total predictions
+    total_result = await db.execute(select(func.count(Prediction.id)))
+    total_predictions = total_result.scalar_one()
+
+    # Upcoming predictions
+    upcoming_result = await db.execute(
+        select(func.count(Prediction.id)).where(Prediction.predicted_start >= now)
+    )
+    upcoming_predictions = upcoming_result.scalar_one()
+
+    # Past predictions
+    past_predictions = total_predictions - upcoming_predictions
+
+    # Total sale windows
+    windows_result = await db.execute(select(func.count(SaleWindow.id)))
+    total_sale_windows = windows_result.scalar_one()
+
+    # Total extracted sales (is_sale=True)
+    sales_result = await db.execute(
+        select(func.count(ExtractedSale.id)).where(ExtractedSale.is_sale == True)
+    )
+    total_extracted_sales = sales_result.scalar_one()
+
+    # By brand stats
+    brand_query = (
+        select(
+            Brand.id,
+            Brand.name,
+            func.count(Prediction.id).label("prediction_count"),
+        )
+        .outerjoin(Prediction, Brand.id == Prediction.brand_id)
+        .group_by(Brand.id, Brand.name)
+        .order_by(func.count(Prediction.id).desc())
+    )
+    brand_result = await db.execute(brand_query)
+    by_brand = [
+        {"brand_id": str(row.id), "brand_name": row.name, "predictions": row.prediction_count}
+        for row in brand_result.all()
+    ]
+
+    return PredictionStats(
+        total_predictions=total_predictions,
+        upcoming_predictions=upcoming_predictions,
+        past_predictions=past_predictions,
+        total_sale_windows=total_sale_windows,
+        total_extracted_sales=total_extracted_sales,
+        by_brand=by_brand,
+    )
+
+
+@router.post("/generate", response_model=GeneratePredictionsResponse)
+async def generate_predictions_endpoint(
+    request: GeneratePredictionsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate predictions from extracted sales.
+
+    This endpoint:
+    1. Groups extracted sales (is_sale=True) into SaleWindows
+    2. Generates Predictions for future years based on historical patterns
+    """
+    from src.deduplicator.grouper import create_sale_windows
+    from src.predictor.generator import generate_predictions, generate_all_future_predictions
+
+    # Step 1: Group sales into windows
+    windows = await create_sale_windows(db, brand_id=request.brand_id)
+    windows_created = len(windows)
+
+    # Step 2: Generate predictions
+    if request.target_year:
+        predictions = await generate_predictions(
+            db,
+            target_year=request.target_year,
+            brand_id=request.brand_id,
+        )
+        predictions_created = len(predictions)
+    else:
+        all_predictions = await generate_all_future_predictions(
+            db,
+            brand_id=request.brand_id,
+            years_ahead=request.years_ahead,
+        )
+        predictions_created = sum(len(p) for p in all_predictions.values())
+
+    return GeneratePredictionsResponse(
+        status="success",
+        windows_created=windows_created,
+        predictions_created=predictions_created,
+        message=f"Created {windows_created} sale windows and {predictions_created} predictions",
+    )
