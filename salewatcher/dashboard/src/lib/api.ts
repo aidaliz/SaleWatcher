@@ -254,3 +254,44 @@ export const scrapeApi = {
   getBrandStats: (brandSlug: string) =>
     fetchAPI<BrandStats>(`/api/scrape/brand/${brandSlug}/stats`),
 };
+
+// Gmail Types
+export interface GmailStatus {
+  configured: boolean;
+  authenticated: boolean;
+  message: string;
+}
+
+export interface GmailSyncResponse {
+  status: string;
+  message: string;
+  stats?: {
+    new?: number;
+    duplicates?: number;
+    errors?: number;
+  };
+}
+
+// Gmail API
+export const gmailApi = {
+  getStatus: () => fetchAPI<GmailStatus>('/api/email/gmail/status'),
+
+  startAuth: () => fetchAPI<{ auth_url: string; state: string }>('/api/email/gmail/auth/start'),
+
+  disconnect: () =>
+    fetchAPI<{ status: string; message: string }>('/api/email/gmail/disconnect', {
+      method: 'POST',
+    }),
+
+  syncBrand: (brandId: string, daysBack: number = 365, maxEmails: number = 500) =>
+    fetchAPI<GmailSyncResponse>(`/api/email/sync/brand/${brandId}`, {
+      method: 'POST',
+      body: JSON.stringify({ days_back: daysBack, max_emails: maxEmails }),
+    }),
+
+  syncAll: (daysBack: number = 365, maxEmails: number = 500) =>
+    fetchAPI<GmailSyncResponse>('/api/email/sync/all', {
+      method: 'POST',
+      body: JSON.stringify({ days_back: daysBack, max_emails: maxEmails }),
+    }),
+};
