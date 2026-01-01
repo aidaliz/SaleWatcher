@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from src.api.deps import get_db
-from src.db.models import RawEmail, ExtractedSale, Brand
+from src.db.models import RawEmail, ExtractedSale, Brand, ExtractionStatus
 
 router = APIRouter()
 
@@ -130,7 +130,7 @@ async def list_emails(
             is_sale=extraction.is_sale if extraction else None,
             discount_summary=extraction.discount_summary if extraction else None,
             confidence=extraction.confidence if extraction else None,
-            review_status=extraction.review_status.value if extraction and extraction.review_status else None,
+            review_status=extraction.status.value if extraction and extraction.status else None,
         ))
 
     return EmailListResponse(
@@ -188,7 +188,7 @@ async def get_email_stats(
     pending_query = (
         select(func.count())
         .select_from(ExtractedSale)
-        .where(ExtractedSale.review_status == "pending")
+        .where(ExtractedSale.status == ExtractionStatus.PENDING)
     )
     pending_review = await db.scalar(pending_query) or 0
 
