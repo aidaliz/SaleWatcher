@@ -343,6 +343,28 @@ export interface EmailStats {
   }>;
 }
 
+export interface EmailDetail {
+  id: string;
+  brand_id: string;
+  brand_name: string;
+  subject: string;
+  sent_at: string;
+  source: string;
+  scraped_at: string;
+  html_content: string;
+  milled_url: string;
+  is_extracted: boolean;
+  is_sale: boolean | null;
+  discount_type: string | null;
+  discount_value: number | null;
+  discount_summary: string | null;
+  categories: string[] | null;
+  sale_start: string | null;
+  sale_end: string | null;
+  confidence: number | null;
+  status: string | null;
+}
+
 // Emails API
 export const emailsApi = {
   list: (params?: {
@@ -364,4 +386,11 @@ export const emailsApi = {
   },
 
   stats: () => fetchAPI<EmailStats>('/api/emails/stats'),
+
+  get: (id: string) => fetchAPI<EmailDetail>(`/api/emails/${id}`),
+
+  extract: (id: string) =>
+    fetchAPI<{ status: string; message: string; result: any }>(`/api/emails/${id}/extract`, {
+      method: 'POST',
+    }),
 };

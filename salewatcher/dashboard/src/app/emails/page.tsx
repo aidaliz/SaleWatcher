@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { emailsApi, brandsApi, Email, EmailStats, Brand } from '@/lib/api';
+import { emailsApi, brandsApi, Email, EmailStats, EmailDetail, Brand } from '@/lib/api';
 
 export default function EmailsPage() {
   const [emails, setEmails] = useState<Email[]>([]);
@@ -10,6 +10,12 @@ export default function EmailsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Email detail modal
+  const [selectedEmail, setSelectedEmail] = useState<EmailDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   // Filters
   const [selectedBrand, setSelectedBrand] = useState<string>('');
@@ -62,6 +68,37 @@ export default function EmailsPage() {
     setPage(0);
   };
 
+  const openEmailDetail = async (emailId: string) => {
+    try {
+      setLoadingDetail(true);
+      const detail = await emailsApi.get(emailId);
+      setSelectedEmail(detail);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load email');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleExtract = async () => {
+    if (!selectedEmail) return;
+    try {
+      setExtracting(true);
+      setError(null);
+      const result = await emailsApi.extract(selectedEmail.id);
+      setSuccess(result.message);
+      // Refresh the email detail
+      const detail = await emailsApi.get(selectedEmail.id);
+      setSelectedEmail(detail);
+      // Refresh the list
+      fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to extract email');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   return (
@@ -74,6 +111,13 @@ export default function EmailsPage() {
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
           {error}
           <button onClick={() => setError(null)} className="ml-2 text-red-600 hover:text-red-800">x</button>
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
+          {success}
+          <button onClick={() => setSuccess(null)} className="ml-2 text-green-600 hover:text-green-800">x</button>
         </div>
       )}
 
@@ -250,6 +294,7 @@ export default function EmailsPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sale Info</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -296,6 +341,14 @@ export default function EmailsPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button
+                        onClick={() => openEmailDetail(email.id)}
+                        className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                      >
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -303,6 +356,125 @@ export default function EmailsPage() {
           </div>
         )}
       </div>
+
+      {/* Email Detail Modal */}
+      {(selectedEmail || loadingDetail) && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => !loadingDetail && setSelectedEmail(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {loadingDetail ? (
+              <div className="p-8 text-center text-gray-500">Loading email...</div>
+            ) : selectedEmail && (
+              <>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between">
+                  <div className="flex-1 pr-4">
+                    <h3 className="text-lg font-semibold text-gray-900">{selectedEmail.subject}</h3>
+                    <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                      <span>Brand: <strong>{selectedEmail.brand_name}</strong></span>
+                      <span>Sent: {new Date(selectedEmail.sent_at).toLocaleString()}</span>
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                        selectedEmail.source === 'gmail'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {selectedEmail.source === 'gmail' ? 'Gmail' : 'Milled'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedEmail(null)}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                {/* Extraction Info */}
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Extraction Status</h4>
+                      {selectedEmail.is_extracted ? (
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              selectedEmail.is_sale
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {selectedEmail.is_sale ? 'Sale Found' : 'No Sale'}
+                            </span>
+                            {selectedEmail.confidence !== null && (
+                              <span className="ml-2 text-gray-500">
+                                Confidence: {Math.round(selectedEmail.confidence * 100)}%
+                              </span>
+                            )}
+                          </div>
+                          {selectedEmail.discount_summary && (
+                            <div className="text-gray-700"><strong>Summary:</strong> {selectedEmail.discount_summary}</div>
+                          )}
+                          {selectedEmail.discount_type && (
+                            <div className="text-gray-700"><strong>Discount Type:</strong> {selectedEmail.discount_type}</div>
+                          )}
+                          {selectedEmail.discount_value && (
+                            <div className="text-gray-700"><strong>Discount Value:</strong> {selectedEmail.discount_value}%</div>
+                          )}
+                          {selectedEmail.categories && selectedEmail.categories.length > 0 && (
+                            <div className="text-gray-700"><strong>Categories:</strong> {selectedEmail.categories.join(', ')}</div>
+                          )}
+                          {selectedEmail.sale_start && (
+                            <div className="text-gray-700">
+                              <strong>Sale Period:</strong> {new Date(selectedEmail.sale_start).toLocaleDateString()}
+                              {selectedEmail.sale_end && ` - ${new Date(selectedEmail.sale_end).toLocaleDateString()}`}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-sm text-gray-500">This email has not been extracted yet.</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleExtract}
+                        disabled={extracting}
+                        className={`px-4 py-2 rounded-lg font-medium ${
+                          extracting
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-purple-600 text-white hover:bg-purple-700'
+                        }`}
+                      >
+                        {extracting ? 'Extracting...' : selectedEmail.is_extracted ? 'Re-Extract' : 'Extract Now'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Content */}
+                <div className="flex-1 overflow-auto p-6">
+                  <h4 className="font-medium text-gray-900 mb-4">Email Content</h4>
+                  <div
+                    className="border border-gray-200 rounded-lg p-4 bg-white"
+                    style={{ minHeight: '300px' }}
+                  >
+                    <iframe
+                      srcDoc={selectedEmail.html_content}
+                      title="Email content"
+                      className="w-full h-[500px] border-0"
+                      sandbox="allow-same-origin"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

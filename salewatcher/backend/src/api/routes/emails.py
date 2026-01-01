@@ -17,6 +17,30 @@ from src.db.models import RawEmail, ExtractedSale, Brand, ExtractionStatus
 router = APIRouter()
 
 
+class EmailDetailResponse(BaseModel):
+    """Response for a single email with full content."""
+    id: str
+    brand_id: str
+    brand_name: str
+    subject: str
+    sent_at: datetime
+    source: str
+    scraped_at: datetime
+    html_content: str
+    milled_url: str
+    # Extraction info
+    is_extracted: bool
+    is_sale: Optional[bool] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[float] = None
+    discount_summary: Optional[str] = None
+    categories: Optional[list[str]] = None
+    sale_start: Optional[datetime] = None
+    sale_end: Optional[datetime] = None
+    confidence: Optional[float] = None
+    status: Optional[str] = None
+
+
 class EmailResponse(BaseModel):
     """Response for a single email."""
     id: str
@@ -235,3 +259,93 @@ async def get_email_stats(
         pending_review=pending_review,
         by_brand=brand_stats,
     )
+
+
+@router.get("/{email_id}", response_model=EmailDetailResponse)
+async def get_email(
+    email_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a single email with full content.
+    """
+    query = (
+        select(RawEmail)
+        .options(
+            joinedload(RawEmail.brand),
+            joinedload(RawEmail.extracted_sale),
+        )
+        .where(RawEmail.id == email_id)
+    )
+
+    result = await db.execute(query)
+    email = result.unique().scalar_one_or_none()
+
+    if not email:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Email not found",
+        )
+
+    source_type = "gmail" if email.milled_url.startswith("gmail://") else "milled"
+    extraction = email.extracted_sale
+
+    return EmailDetailResponse(
+        id=str(email.id),
+        brand_id=str(email.brand_id),
+        brand_name=email.brand.name if email.brand else "Unknown",
+        subject=email.subject,
+        sent_at=email.sent_at,
+        source=source_type,
+        scraped_at=email.scraped_at,
+        html_content=email.html_content,
+        milled_url=email.milled_url,
+        is_extracted=extraction is not None,
+        is_sale=extraction.is_sale if extraction else None,
+        discount_type=extraction.discount_type.value if extraction and extraction.discount_type else None,
+        discount_value=extraction.discount_value if extraction else None,
+        discount_summary=extraction.discount_summary if extraction else None,
+        categories=extraction.categories if extraction else None,
+        sale_start=extraction.sale_start if extraction else None,
+        sale_end=extraction.sale_end if extraction else None,
+        confidence=extraction.confidence if extraction else None,
+        status=extraction.status.value if extraction and extraction.status else None,
+    )
+
+
+@router.post("/{email_id}/extract")
+async def extract_email(
+    email_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manually trigger extraction for a single email.
+    """
+    from src.extraction import ExtractionService
+
+    # Get the email
+    query = (
+        select(RawEmail)
+        .options(joinedload(RawEmail.brand))
+        .where(RawEmail.id == email_id)
+    )
+    result = await db.execute(query)
+    email = result.unique().scalar_one_or_none()
+
+    if not email:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Email not found",
+        )
+
+    # Run extraction
+    service = ExtractionService()
+    extraction_result = await service.extract_single_email(db, email)
+
+    return {
+        "status": "success",
+        "message": f"Extraction completed for email: {email.subject}",
+        "result": extraction_result,
+    }
