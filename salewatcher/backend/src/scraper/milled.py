@@ -97,9 +97,19 @@ class MilledScraper:
         scroll_attempts = 0
         max_scroll_attempts = 50
 
+        prev_link_count = 0
         while emails_found < max_emails and scroll_attempts < max_scroll_attempts:
-            # Get all email links on page
-            email_links = await self.page.query_selector_all('a[href*="/emails/"]')
+            # Get all email links on page - links that start with /{brand_slug}/ and have more path
+            # Email links look like: /BathBodyWorks/some-email-title-abc123
+            all_brand_links = await self.page.query_selector_all(f'a[href^="/{brand.milled_slug}/"]')
+
+            # Filter out links that are just the brand page itself
+            email_links = []
+            for link in all_brand_links:
+                href = await link.get_attribute("href")
+                # Must have content after /{brand_slug}/
+                if href and len(href) > len(f"/{brand.milled_slug}/") + 5:
+                    email_links.append(link)
 
             # Debug: Log number of links found on first scroll
             if scroll_attempts == 0:
@@ -143,11 +153,12 @@ class MilledScraper:
             await asyncio.sleep(1)
             scroll_attempts += 1
 
-            # Check if we've reached the end
-            new_links = await self.page.query_selector_all('a[href*="/emails/"]')
-            if len(new_links) == len(email_links):
+            # Check if we've reached the end (no new links loaded after scroll)
+            current_link_count = len(email_links)
+            if current_link_count == prev_link_count:
                 logger.info("No more emails to load")
                 break
+            prev_link_count = current_link_count
 
         logger.info(f"Scraped {len(scraped_emails)} new emails for {brand.name}")
         return scraped_emails

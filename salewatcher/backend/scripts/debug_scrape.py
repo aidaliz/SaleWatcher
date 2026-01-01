@@ -66,9 +66,14 @@ async def main():
             # Re-check page after challenge
             await page.wait_for_load_state("networkidle")
 
-        # Try to find email links
-        email_links = await page.query_selector_all('a[href*="/emails/"]')
-        print(f"\nFound {len(email_links)} email links with selector 'a[href*=\"/emails/\"]'")
+        # Try to find email links - links that start with /{brand_slug}/ and have content after
+        all_brand_links = await page.query_selector_all(f'a[href^="/{brand_slug}/"]')
+        email_links = []
+        for link in all_brand_links:
+            href = await link.get_attribute("href")
+            if href and len(href) > len(f"/{brand_slug}/") + 5:
+                email_links.append(link)
+        print(f"\nFound {len(email_links)} email links with selector 'a[href^=\"/{brand_slug}/\"]'")
 
         if len(email_links) == 0:
             print("\nTrying alternative selectors...")
