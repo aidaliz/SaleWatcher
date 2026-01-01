@@ -17,6 +17,11 @@ export default function ScrapePage() {
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [gmailLoading, setGmailLoading] = useState(false);
 
+  // Gmail configuration
+  const [showGmailConfig, setShowGmailConfig] = useState(false);
+  const [gmailClientId, setGmailClientId] = useState('');
+  const [gmailClientSecret, setGmailClientSecret] = useState('');
+
   // Scrape settings
   const [daysBack, setDaysBack] = useState(365);
   const [maxEmails, setMaxEmails] = useState(500);
@@ -160,6 +165,30 @@ export default function ScrapePage() {
     }
   };
 
+  const handleConfigureGmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gmailClientId || !gmailClientSecret) {
+      setError('Please enter both Client ID and Client Secret');
+      return;
+    }
+    try {
+      setGmailLoading(true);
+      setError(null);
+      const result = await gmailApi.configure(gmailClientId, gmailClientSecret);
+      setSuccess(result.message);
+      setShowGmailConfig(false);
+      setGmailClientId('');
+      setGmailClientSecret('');
+      // Refresh Gmail status
+      const status = await gmailApi.getStatus();
+      setGmailStatus(status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to configure Gmail');
+    } finally {
+      setGmailLoading(false);
+    }
+  };
+
   const getStatusBadge = (status: ScrapeJob['status']) => {
     const styles = {
       pending: 'bg-gray-100 text-gray-800',
@@ -212,9 +241,13 @@ export default function ScrapePage() {
                 <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                   Connected
                 </span>
-              ) : (
+              ) : gmailStatus?.configured ? (
                 <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
                   Not Connected
+                </span>
+              ) : (
+                <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                  Not Configured
                 </span>
               )}
             </h2>
@@ -247,10 +280,73 @@ export default function ScrapePage() {
                 {gmailLoading ? 'Connecting...' : 'Connect Gmail'}
               </button>
             ) : (
-              <span className="text-sm text-gray-500">Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in .env</span>
+              <button
+                onClick={() => setShowGmailConfig(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Configure Gmail
+              </button>
             )}
           </div>
         </div>
+
+        {/* Gmail Configuration Form */}
+        {showGmailConfig && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <h3 className="text-md font-medium text-gray-900 mb-3">Configure Gmail OAuth Credentials</h3>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800 mb-2">
+                <strong>To get Gmail OAuth credentials:</strong>
+              </p>
+              <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+                <li>Go to the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a></li>
+                <li>Create a new project or select an existing one</li>
+                <li>Enable the Gmail API</li>
+                <li>Create OAuth 2.0 credentials (Web application type)</li>
+                <li>Add <code className="bg-blue-100 px-1 rounded">http://localhost:8000/api/email/oauth/callback</code> as an authorized redirect URI</li>
+                <li>Copy the Client ID and Client Secret below</li>
+              </ol>
+            </div>
+            <form onSubmit={handleConfigureGmail} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                <input
+                  type="text"
+                  value={gmailClientId}
+                  onChange={(e) => setGmailClientId(e.target.value)}
+                  placeholder="your-client-id.apps.googleusercontent.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+                <input
+                  type="password"
+                  value={gmailClientSecret}
+                  onChange={(e) => setGmailClientSecret(e.target.value)}
+                  placeholder="GOCSPX-..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={gmailLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+                >
+                  {gmailLoading ? 'Saving...' : 'Save Credentials'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowGmailConfig(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Settings Panel */}

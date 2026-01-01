@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     google_credentials_json: str = ""
     google_calendar_id: str = ""
 
+    # Gmail OAuth
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
+    gmail_redirect_uri: str = "http://localhost:8000/api/email/oauth/callback"
+
     # Resend email
     resend_api_key: str = ""
     notification_email: str = ""

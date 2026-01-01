@@ -49,6 +49,18 @@ class OAuthUrlResponse(BaseModel):
     state: str
 
 
+class GmailConfigRequest(BaseModel):
+    """Request body for Gmail configuration."""
+    client_id: str
+    client_secret: str
+
+
+class GmailConfigResponse(BaseModel):
+    """Response for Gmail configuration."""
+    success: bool
+    message: str
+
+
 # In-memory state storage for OAuth (use Redis in production)
 _oauth_states: dict[str, bool] = {}
 
@@ -149,6 +161,73 @@ async def get_gmail_status():
         configured=True,
         authenticated=False,
         message="Gmail authentication required. Token may have expired.",
+    )
+
+
+@router.post("/gmail/configure", response_model=GmailConfigResponse)
+async def configure_gmail(request: GmailConfigRequest):
+    """
+    Configure Gmail OAuth credentials.
+
+    Saves the client ID and secret to the .env file so they persist
+    across server restarts.
+    """
+    global _gmail_client
+
+    if not request.client_id or not request.client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Both client_id and client_secret are required",
+        )
+
+    # Read existing .env file
+    env_path = '.env'
+    env_lines = []
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            env_lines = f.readlines()
+
+    # Update or add Gmail credentials
+    new_lines = []
+    found_client_id = False
+    found_client_secret = False
+
+    for line in env_lines:
+        if line.startswith('GMAIL_CLIENT_ID='):
+            new_lines.append(f'GMAIL_CLIENT_ID={request.client_id}\n')
+            found_client_id = True
+        elif line.startswith('GMAIL_CLIENT_SECRET='):
+            new_lines.append(f'GMAIL_CLIENT_SECRET={request.client_secret}\n')
+            found_client_secret = True
+        else:
+            new_lines.append(line)
+
+    # Add if not found
+    if not found_client_id:
+        new_lines.append(f'GMAIL_CLIENT_ID={request.client_id}\n')
+    if not found_client_secret:
+        new_lines.append(f'GMAIL_CLIENT_SECRET={request.client_secret}\n')
+
+    # Write back
+    try:
+        with open(env_path, 'w') as f:
+            f.writelines(new_lines)
+    except IOError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save credentials: {str(e)}",
+        )
+
+    # Set environment variables for current session
+    os.environ['GMAIL_CLIENT_ID'] = request.client_id
+    os.environ['GMAIL_CLIENT_SECRET'] = request.client_secret
+
+    # Reset Gmail client to pick up new credentials
+    _gmail_client = None
+
+    return GmailConfigResponse(
+        success=True,
+        message="Gmail credentials saved. You can now connect your Gmail account.",
     )
 
 

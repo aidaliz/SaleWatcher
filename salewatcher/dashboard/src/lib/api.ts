@@ -276,6 +276,12 @@ export interface GmailSyncResponse {
 export const gmailApi = {
   getStatus: () => fetchAPI<GmailStatus>('/api/email/gmail/status'),
 
+  configure: (clientId: string, clientSecret: string) =>
+    fetchAPI<{ success: boolean; message: string }>('/api/email/gmail/configure', {
+      method: 'POST',
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+    }),
+
   startAuth: () => fetchAPI<{ auth_url: string; state: string }>('/api/email/gmail/auth/start'),
 
   disconnect: () =>
