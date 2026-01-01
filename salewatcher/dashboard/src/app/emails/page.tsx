@@ -271,22 +271,26 @@ export default function EmailsPage() {
           >
             Reset Filters
           </button>
+        </div>
 
-          {/* Batch Extract */}
-          <div className="ml-auto flex items-end gap-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Limit</label>
-              <select
-                value={batchLimit}
-                onChange={(e) => setBatchLimit(Number(e.target.value))}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-              >
-                <option value={10}>10 emails</option>
-                <option value={25}>25 emails</option>
-                <option value={50}>50 emails</option>
-                <option value={100}>100 emails</option>
-              </select>
-            </div>
+        {/* Batch Extract - separate row */}
+        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200">
+          <div className="text-sm text-gray-600">
+            {stats ? `${stats.not_extracted} emails not yet extracted` : 'Loading...'}
+            {selectedBrand && ' (filtered by brand)'}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <label className="text-sm font-medium text-gray-700">Limit:</label>
+            <select
+              value={batchLimit}
+              onChange={(e) => setBatchLimit(Number(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
             <button
               onClick={handleBatchExtract}
               disabled={batchExtracting}
@@ -296,17 +300,10 @@ export default function EmailsPage() {
                   : 'bg-purple-600 text-white hover:bg-purple-700'
               }`}
             >
-              {batchExtracting ? 'Extracting...' : `Extract All${selectedBrand ? ' (Brand)' : ''}`}
+              {batchExtracting ? 'Extracting...' : 'Extract All'}
             </button>
           </div>
         </div>
-        {stats && stats.not_extracted > 0 && (
-          <div className="mt-3 text-sm text-gray-500">
-            {stats.not_extracted} emails not yet extracted.
-            {selectedBrand && ' Filtering by selected brand.'}
-            {' '}Extraction uses AI and may take a moment per email.
-          </div>
-        )}
       </div>
 
       {/* Email List */}
