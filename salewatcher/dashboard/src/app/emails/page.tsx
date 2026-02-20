@@ -522,9 +522,9 @@ export default function EmailsPage() {
                         <>
                           <button
                             onClick={() => handleMarkAsSale(true)}
-                            disabled={updating || selectedEmail.is_sale}
+                            disabled={updating || !!selectedEmail.is_sale}
                             className={`px-4 py-2 rounded-lg font-medium ${
-                              updating || selectedEmail.is_sale
+                              updating || !!selectedEmail.is_sale
                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                 : 'bg-emerald-600 text-white hover:bg-emerald-700'
                             }`}
