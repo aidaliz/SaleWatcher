@@ -6,9 +6,67 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from sqlalchemy import text
+
 from src.config import settings
-from src.db.session import init_db, close_db
+from src.db.session import init_db, close_db, get_async_engine
 from src.api.routes import api_router
+
+
+async def run_schema_migrations() -> None:
+    """Apply safe, idempotent schema migrations at startup.
+
+    Handles the gap between the old backend schema (email_id, review_status)
+    and the new backend model (raw_email_id, status).
+    """
+    engine = get_async_engine()
+    async with engine.begin() as conn:
+        # 1. Add raw_email_id to extracted_sales (was email_id in old schema)
+        await conn.execute(text("""
+            ALTER TABLE extracted_sales
+            ADD COLUMN IF NOT EXISTS raw_email_id UUID REFERENCES raw_emails(id)
+        """))
+        # Copy email_id → raw_email_id for existing rows
+        await conn.execute(text("""
+            UPDATE extracted_sales
+            SET raw_email_id = email_id
+            WHERE raw_email_id IS NULL
+              AND email_id IS NOT NULL
+        """))
+
+        # 2. Add status column (was review_status in old schema)
+        await conn.execute(text("""
+            ALTER TABLE extracted_sales
+            ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending'
+        """))
+        await conn.execute(text("""
+            UPDATE extracted_sales
+            SET status = COALESCE(review_status, 'pending')
+            WHERE status IS NULL OR status = 'pending'
+        """))
+
+        # 3. Add is_sale column if missing
+        await conn.execute(text("""
+            ALTER TABLE extracted_sales
+            ADD COLUMN IF NOT EXISTS is_sale BOOLEAN DEFAULT TRUE
+        """))
+
+        # 4. Add extracted_at if missing (was created_at)
+        await conn.execute(text("""
+            ALTER TABLE extracted_sales
+            ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMP DEFAULT NOW()
+        """))
+        await conn.execute(text("""
+            UPDATE extracted_sales
+            SET extracted_at = COALESCE(created_at, NOW())
+            WHERE extracted_at IS NULL
+        """))
+
+        # 5. Ensure new tables exist (create_all for new models only)
+        from src.db.models import Base
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
+            sync_conn, checkfirst=True
+        ))
 
 # Configure logging
 logging.basicConfig(
@@ -34,8 +92,12 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     # Startup
     logger.info("Starting SaleWatcher API...")
+    try:
+        await run_schema_migrations()
+        logger.info("Schema migrations applied successfully")
+    except Exception as e:
+        logger.warning(f"Schema migration warning (non-fatal): {e}")
     if settings.debug:
-        # Only create tables in debug mode; use Alembic in production
         await init_db()
         logger.info("Database tables created (debug mode)")
     yield
