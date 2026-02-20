@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     milled_email: str = ""
     milled_password: str = ""
 
+    # ZenRows (Cloudflare bypass proxy)
+    zenrows_api_key: str = ""
+
     # Anthropic API
     anthropic_api_key: str = ""
 
