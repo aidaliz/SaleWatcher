@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from src.config.settings import get_settings
-from src.api.routes import brands, predictions, review, accuracy, system
+from src.api.routes import brands, predictions, review, accuracy, system, email_sync
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -62,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(review.router, prefix="/api/review", tags=["review"])
     app.include_router(accuracy.router, prefix="/api/accuracy", tags=["accuracy"])
     app.include_router(system.router, prefix="/api", tags=["system"])
+    app.include_router(email_sync.router, prefix="/api/email", tags=["email"])
 
     return app
 
