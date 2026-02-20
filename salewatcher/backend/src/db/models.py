@@ -123,7 +123,7 @@ class ExtractedSale(Base):
     # LLM metadata
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     model_used: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[ExtractionStatus] = mapped_column(SQLEnum(ExtractionStatus), default=ExtractionStatus.PENDING, nullable=False)
+    status: Mapped[ExtractionStatus] = mapped_column(String(50), default=ExtractionStatus.PENDING, nullable=False)
     review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     extracted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
