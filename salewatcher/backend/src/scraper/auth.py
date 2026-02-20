@@ -95,45 +95,34 @@ class MilledAuth:
         # Apply stealth to bypass bot detection
         await stealth_async(self.page)
 
-        # Login with credentials if no saved session
+        # Attempt login with credentials (best-effort — brand pages are public anyway)
         if not COOKIES_PATH.exists():
             await self._login()
 
     async def _login(self) -> None:
-        """Perform login to Milled.com."""
-        logger.info("Logging in to Milled.com...")
+        """Perform login to Milled.com (best-effort — brand pages are public)."""
+        logger.info("Attempting Milled.com login...")
 
-        # Check if we should use manual login (no credentials set)
         if not settings.effective_milled_email or not settings.milled_password:
-            raise ValueError(
-                "No session found and no credentials set.\n"
-                "Please run 'python scripts/login_milled.py' first to log in manually,\n"
-                "or set MILLED_EMAIL and MILLED_PASSWORD in your .env file."
-            )
+            logger.warning("No Milled credentials set — proceeding without login (public pages only).")
+            return
 
-        await self.page.goto("https://milled.com/sign-in", wait_until="networkidle")
-
-        # Fill login form
-        await self.page.fill('input[name="email"]', settings.effective_milled_email)
-        await self.page.fill('input[name="password"]', settings.milled_password)
-
-        # Submit
-        await self.page.click('button[type="submit"]')
-
-        # Wait for navigation
         try:
-            await self.page.wait_for_url("**/account**", timeout=10000)
-            logger.info("Login successful")
+            await self.page.goto("https://milled.com/sign-in", wait_until="domcontentloaded", timeout=20000)
 
-            # Save session
-            await self.context.storage_state(path=str(COOKIES_PATH))
-            logger.info("Session saved")
+            await self.page.fill('input[name="email"]', settings.effective_milled_email, timeout=10000)
+            await self.page.fill('input[name="password"]', settings.milled_password, timeout=5000)
+            await self.page.click('button[type="submit"]')
+
+            try:
+                await self.page.wait_for_url("**/account**", timeout=10000)
+                logger.info("Milled login successful — session saved.")
+                await self.context.storage_state(path=str(COOKIES_PATH))
+            except Exception:
+                logger.warning("Login redirect not detected — may still be authenticated. Continuing.")
+
         except Exception as e:
-            logger.error(f"Login failed: {e}")
-            raise RuntimeError(
-                "Failed to login to Milled.com.\n"
-                "If using Google OAuth, run 'python scripts/login_milled.py' instead."
-            )
+            logger.warning(f"Milled login failed ({e}) — will scrape public pages without auth.")
 
     async def get_page(self) -> Page:
         """Get authenticated page for scraping."""
