@@ -233,7 +233,7 @@ export default function ScrapePage() {
 
       {/* Gmail Connection Status */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               Gmail Integration
@@ -433,85 +433,133 @@ export default function ScrapePage() {
           <h2 className="text-lg font-semibold text-gray-900">Brands</h2>
           <p className="text-sm text-gray-500">Scrape from Milled.com or sync from Gmail</p>
         </div>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Brand
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Emails
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Extracted
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Predictions
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {brands.map((brand) => {
-              const stats = brandStats[brand.milled_slug];
-              const isRunning = jobs.some(
-                (j) => j.brand_id === brand.id && (j.status === 'running' || j.status === 'pending')
-              );
-              const isSyncing = syncingBrand === brand.id;
 
-              return (
-                <tr key={brand.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+        {/* Mobile card view */}
+        <div className="sm:hidden divide-y divide-gray-200">
+          {brands.map((brand) => {
+            const stats = brandStats[brand.milled_slug];
+            const isRunning = jobs.some(
+              (j) => j.brand_id === brand.id && (j.status === 'running' || j.status === 'pending')
+            );
+            const isSyncing = syncingBrand === brand.id;
+            return (
+              <div key={brand.id} className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
                     <div className="font-medium text-gray-900">{brand.name}</div>
-                    <div className="text-sm text-gray-500">{brand.milled_slug}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {stats?.total_emails ?? '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {stats?.extracted_sales ?? '-'}
-                    {stats?.pending_review ? (
-                      <span className="ml-1 text-yellow-600">({stats.pending_review} pending)</span>
-                    ) : null}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {stats?.predictions ?? '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
+                    <div className="text-xs text-gray-500">{brand.milled_slug}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="font-semibold">{stats?.total_emails ?? '-'}</div>
+                    <div className="text-xs text-gray-500">Emails</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="font-semibold">{stats?.extracted_sales ?? '-'}</div>
+                    <div className="text-xs text-gray-500">Extracted</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="font-semibold">{stats?.predictions ?? '-'}</div>
+                    <div className="text-xs text-gray-500">Predictions</div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleScrape(brand.milled_slug)}
+                    disabled={isRunning || scrapingBrand === brand.milled_slug}
+                    className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      isRunning || scrapingBrand === brand.milled_slug
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {isRunning ? 'Running...' : scrapingBrand === brand.milled_slug ? 'Starting...' : '📧 Milled'}
+                  </button>
+                  {gmailStatus?.authenticated && (
                     <button
-                      onClick={() => handleScrape(brand.milled_slug)}
-                      disabled={isRunning || scrapingBrand === brand.milled_slug}
-                      className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                        isRunning || scrapingBrand === brand.milled_slug
+                      onClick={() => handleGmailSync(brand.id, brand.name)}
+                      disabled={isSyncing}
+                      className={`flex-1 py-2 rounded-lg font-medium text-sm transition-colors ${
+                        isSyncing
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-green-600 text-white hover:bg-green-700'
                       }`}
-                      title="Scrape from Milled.com"
                     >
-                      {isRunning ? 'Running...' : scrapingBrand === brand.milled_slug ? 'Starting...' : 'Milled'}
+                      {isSyncing ? 'Syncing...' : '📬 Gmail'}
                     </button>
-                    {gmailStatus?.authenticated && (
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table view */}
+        <div className="hidden sm:block overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Emails</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Extracted</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Predictions</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {brands.map((brand) => {
+                const stats = brandStats[brand.milled_slug];
+                const isRunning = jobs.some(
+                  (j) => j.brand_id === brand.id && (j.status === 'running' || j.status === 'pending')
+                );
+                const isSyncing = syncingBrand === brand.id;
+                return (
+                  <tr key={brand.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-medium text-gray-900">{brand.name}</div>
+                      <div className="text-sm text-gray-500">{brand.milled_slug}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats?.total_emails ?? '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {stats?.extracted_sales ?? '-'}
+                      {stats?.pending_review ? (
+                        <span className="ml-1 text-yellow-600">({stats.pending_review} pending)</span>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats?.predictions ?? '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
                       <button
-                        onClick={() => handleGmailSync(brand.id, brand.name)}
-                        disabled={isSyncing}
+                        onClick={() => handleScrape(brand.milled_slug)}
+                        disabled={isRunning || scrapingBrand === brand.milled_slug}
                         className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                          isSyncing
+                          isRunning || scrapingBrand === brand.milled_slug
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
-                        title="Sync from Gmail"
                       >
-                        {isSyncing ? 'Syncing...' : 'Gmail'}
+                        {isRunning ? 'Running...' : scrapingBrand === brand.milled_slug ? 'Starting...' : 'Milled'}
                       </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      {gmailStatus?.authenticated && (
+                        <button
+                          onClick={() => handleGmailSync(brand.id, brand.name)}
+                          disabled={isSyncing}
+                          className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                            isSyncing
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}
+                        >
+                          {isSyncing ? 'Syncing...' : 'Gmail'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Recent Jobs History */}
