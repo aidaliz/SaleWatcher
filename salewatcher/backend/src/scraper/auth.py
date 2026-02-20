@@ -51,39 +51,52 @@ class MilledAuth:
         """Initialize browser and authenticate."""
         self.playwright = await async_playwright().start()
 
-        # Check if we have existing browser data from manual login
-        has_session = USER_DATA_DIR.exists() and any(USER_DATA_DIR.iterdir())
-
-        if has_session:
-            logger.info("Using existing browser session from manual login...")
-        else:
-            logger.warning("No existing session found. Run 'python scripts/login_milled.py' first.")
-
-        # Use persistent context with stealth settings to avoid Cloudflare
-        # The user_data_dir stores cookies/session from the manual login
-        self.context = await self.playwright.chromium.launch_persistent_context(
-            user_data_dir=str(USER_DATA_DIR),
+        # Launch browser with headless mode (required for Railway/Docker)
+        browser = await self.playwright.chromium.launch(
             headless=self.headless,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
+                "--disable-gpu",
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
                 "--no-default-browser-check",
             ],
-            ignore_default_args=["--enable-automation"],
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         )
 
-        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+        # Load saved cookies if they exist (session persistence via file)
+        if COOKIES_PATH.exists():
+            logger.info("Loading saved Milled session from cookies...")
+            try:
+                import json as _json
+                with open(COOKIES_PATH) as f:
+                    storage_state = _json.load(f)
+                self.context = await browser.new_context(
+                    storage_state=storage_state,
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load saved session: {e}. Starting fresh login.")
+                self.context = await browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                )
+        else:
+            logger.info("No saved session — will login with credentials.")
+            self.context = await browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+
+        self.page = await self.context.new_page()
 
         # Apply stealth to bypass bot detection
         await stealth_async(self.page)
 
-        # Skip login check if we have existing session data - just try to use it
-        if not has_session:
+        # Login with credentials if no saved session
+        if not COOKIES_PATH.exists():
             await self._login()
 
     async def _login(self) -> None:
