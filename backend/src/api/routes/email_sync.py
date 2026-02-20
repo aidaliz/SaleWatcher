@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
+from src.api.deps import get_db_session as get_db
 from src.db.models import Brand
 from src.email_ingest import GmailClient, EmailIngestionService
 
