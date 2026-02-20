@@ -104,7 +104,7 @@ class MilledAuth:
         logger.info("Logging in to Milled.com...")
 
         # Check if we should use manual login (no credentials set)
-        if not settings.milled_email or not settings.milled_password:
+        if not settings.effective_milled_email or not settings.milled_password:
             raise ValueError(
                 "No session found and no credentials set.\n"
                 "Please run 'python scripts/login_milled.py' first to log in manually,\n"
@@ -114,7 +114,7 @@ class MilledAuth:
         await self.page.goto("https://milled.com/sign-in", wait_until="networkidle")
 
         # Fill login form
-        await self.page.fill('input[name="email"]', settings.milled_email)
+        await self.page.fill('input[name="email"]', settings.effective_milled_email)
         await self.page.fill('input[name="password"]', settings.milled_password)
 
         # Submit

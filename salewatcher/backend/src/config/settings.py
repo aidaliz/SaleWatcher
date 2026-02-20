@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     calendar_alert_days_before: int = 7
 
     @property
+    def effective_milled_email(self) -> str:
+        """Return milled_email, falling back to notification_email if blank."""
+        return self.milled_email or self.notification_email
+
+    @property
     def async_database_url(self) -> str:
         """Ensure database URL uses asyncpg driver."""
         url = self.database_url
