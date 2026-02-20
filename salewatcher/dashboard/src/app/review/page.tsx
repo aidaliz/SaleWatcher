@@ -85,7 +85,7 @@ export default function ReviewPage() {
         <div className="space-y-4">
           {items.map((item) => (
             <div key={item.id} className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="font-semibold text-gray-900">{item.brand_name}</span>
@@ -112,7 +112,7 @@ export default function ReviewPage() {
                     <span>Extracted: {new Date(item.extracted_at).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="flex gap-2 ml-4">
+                <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-0 sm:ml-4">
                   <button
                     onClick={() => handleApprove(item.id)}
                     disabled={actionLoading === item.id}
