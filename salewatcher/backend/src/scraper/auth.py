@@ -65,6 +65,9 @@ class MilledAuth:
             user_data_dir=str(USER_DATA_DIR),
             headless=self.headless,
             args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
                 "--no-default-browser-check",
