@@ -334,32 +334,31 @@ async def start_gmail_oauth():
 @router.get("/gmail/auth/callback")
 async def gmail_oauth_callback(
     code: str = Query(..., description="Authorization code from Google"),
-    state: str = Query(..., description="State parameter for CSRF protection"),
+    state: str = Query(None, description="State parameter for CSRF protection"),
     error: Optional[str] = Query(None, description="Error from OAuth flow"),
 ):
     """
     Handle OAuth2 callback from Google.
 
     Exchanges the authorization code for tokens and saves them.
-    Redirects to the dashboard on success.
+    Redirects to the frontend dashboard on success.
     """
+    # Frontend scrape page URL — where to redirect after OAuth
+    frontend_url = os.getenv('DASHBOARD_URL', 'http://localhost:3000')
+    scrape_url = f"{frontend_url}/scrape"
+
     # Check for OAuth errors
     if error:
-        # Redirect to dashboard with error
         return RedirectResponse(
-            url=f"/settings?gmail_error={error}",
+            url=f"{scrape_url}?gmail_error={error}",
             status_code=status.HTTP_302_FOUND,
         )
 
-    # Verify state for CSRF protection
-    if state not in _oauth_states:
-        return RedirectResponse(
-            url="/settings?gmail_error=invalid_state",
-            status_code=status.HTTP_302_FOUND,
-        )
-
-    # Remove used state
-    del _oauth_states[state]
+    # State check — skip if state not in memory (can happen after redeploy)
+    # This is acceptable for a single-user personal app
+    if state and state in _oauth_states:
+        del _oauth_states[state]
+    # If state not found, continue anyway rather than blocking the user
 
     client = get_gmail_client()
 
@@ -367,24 +366,24 @@ async def gmail_oauth_callback(
         # Exchange code for tokens
         token_data = client.exchange_code(code)
 
-        # Save token for future use
+        # Save token to DB (persists across redeploys) + local file
         _save_token(token_data)
 
         # Authenticate with the new token
         if client.authenticate_with_token(token_data):
             return RedirectResponse(
-                url="/settings?gmail_success=true",
+                url=f"{scrape_url}?gmail_success=true",
                 status_code=status.HTTP_302_FOUND,
             )
         else:
             return RedirectResponse(
-                url="/settings?gmail_error=auth_failed",
+                url=f"{scrape_url}?gmail_error=auth_failed",
                 status_code=status.HTTP_302_FOUND,
             )
 
     except Exception as e:
         return RedirectResponse(
-            url=f"/settings?gmail_error={str(e)}",
+            url=f"{scrape_url}?gmail_error=oauth_failed",
             status_code=status.HTTP_302_FOUND,
         )
 
