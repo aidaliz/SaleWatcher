@@ -78,7 +78,26 @@ async def run_schema_migrations() -> None:
             WHERE extracted_at IS NULL
         """))
 
-        # 5. Ensure new tables exist (create_all for new models only)
+        # 5. Add columns added by newer schema that may not exist in older DBs
+        for col_sql in [
+            "ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)",
+            "ADD COLUMN IF NOT EXISTS discount_value FLOAT",
+            "ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)",
+            "ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'",
+            "ADD COLUMN IF NOT EXISTS sale_start TIMESTAMP",
+            "ADD COLUMN IF NOT EXISTS sale_end TIMESTAMP",
+            "ADD COLUMN IF NOT EXISTS confidence FLOAT",
+            "ADD COLUMN IF NOT EXISTS model_used VARCHAR(100)",
+            "ADD COLUMN IF NOT EXISTS review_notes TEXT",
+            "ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
+            "ADD COLUMN IF NOT EXISTS sale_window_id UUID REFERENCES sale_windows(id)",
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE extracted_sales {col_sql}"))
+            except Exception:
+                pass  # column already exists or FK target missing — safe to skip
+
+        # 6. Ensure new tables exist (create_all for new models only)
         from src.db.models import Base
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
             sync_conn, checkfirst=True
