@@ -103,7 +103,7 @@ export default function PredictionsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Predictions</h1>
       </div>
 
@@ -153,7 +153,7 @@ export default function PredictionsPage() {
 
       {/* Filters & Generate */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-wrap gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-3 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
             <select
@@ -259,7 +259,44 @@ export default function PredictionsPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile card view */}
+            <div className="sm:hidden divide-y divide-gray-200">
+              {predictions.map((prediction) => {
+                const isUpcoming = new Date(prediction.predicted_start) >= new Date();
+                return (
+                  <div key={prediction.id} className={`p-4 ${!isUpcoming ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-gray-900">{prediction.brand?.name || 'Unknown'}</span>
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">
+                        {prediction.expected_discount}% {prediction.discount_type}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500 mb-1">
+                      {formatDate(prediction.predicted_start)} – {formatDate(prediction.predicted_end)} · {prediction.target_year}
+                    </div>
+                    {prediction.discount_summary && (
+                      <div className="text-sm text-gray-600 mb-2 line-clamp-2">{prediction.discount_summary}</div>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 bg-gray-200 rounded-full h-1.5">
+                          <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${prediction.confidence * 100}%` }} />
+                        </div>
+                        <span>{Math.round(prediction.confidence * 100)}% confidence</span>
+                      </div>
+                      {prediction.synced_to_calendar ? (
+                        <span className="text-green-600">📅 Synced</span>
+                      ) : (
+                        <span className="text-gray-400">Not synced</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table view */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -335,7 +372,8 @@ export default function PredictionsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
