@@ -88,9 +88,66 @@ def _is_gmail_configured() -> bool:
     return bool(client_id and client_secret)
 
 
+def _sync_db_url() -> str:
+    """Return a psycopg2-compatible (sync) database URL."""
+    url = os.getenv('DATABASE_URL', '')
+    # Strip asyncpg driver prefix if present
+    return url.replace('postgresql+asyncpg://', 'postgresql://')
+
+
+def _db_get_token() -> Optional[dict]:
+    """Retrieve Gmail token from PostgreSQL (persistent across deploys)."""
+    db_url = _sync_db_url()
+    if not db_url:
+        return None
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT value FROM salewatcher_kv WHERE key = 'gmail_token' LIMIT 1"
+        )
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception:
+        pass
+    return None
+
+
+def _db_save_token(token_data: dict) -> None:
+    """Persist Gmail token to PostgreSQL so it survives Railway redeploys."""
+    db_url = _sync_db_url()
+    if not db_url:
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS salewatcher_kv (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute(
+            """INSERT INTO salewatcher_kv (key, value, updated_at)
+               VALUES ('gmail_token', %s, NOW())
+               ON CONFLICT (key) DO UPDATE
+               SET value = EXCLUDED.value, updated_at = NOW()""",
+            (json.dumps(token_data),)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def _get_stored_token() -> Optional[dict]:
-    """Get stored Gmail token from environment or file."""
-    # First try environment variable (for production deployment)
+    """Get stored Gmail token — checks env var, then DB, then local file."""
+    # 1. Environment variable (manually set in Railway dashboard)
     token_json = os.getenv('GMAIL_TOKEN_JSON')
     if token_json:
         try:
@@ -98,7 +155,12 @@ def _get_stored_token() -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # Fall back to token file (for local development)
+    # 2. PostgreSQL (persists across deploys — preferred in production)
+    db_token = _db_get_token()
+    if db_token:
+        return db_token
+
+    # 3. Local file fallback (development only)
     token_path = 'gmail_token.json'
     if os.path.exists(token_path):
         try:
@@ -111,13 +173,16 @@ def _get_stored_token() -> Optional[dict]:
 
 
 def _save_token(token_data: dict) -> None:
-    """Save token to file for local development."""
+    """Save Gmail token to DB (persistent) and local file (dev fallback)."""
+    # Always persist to DB first — survives Railway redeploys
+    _db_save_token(token_data)
+
+    # Also write to local file for dev convenience
     token_path = 'gmail_token.json'
     try:
         with open(token_path, 'w') as f:
             json.dump(token_data, f, indent=2)
-    except IOError as e:
-        # In production, token should be set via GMAIL_TOKEN_JSON env var
+    except IOError:
         pass
 
 
