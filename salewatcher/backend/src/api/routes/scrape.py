@@ -57,7 +57,7 @@ class ScrapeRequest(BaseModel):
     max_emails: int = 2000  # Increased for larger brands
     run_extraction: bool = True
     run_predictions: bool = True
-    headless: bool = False  # Default to visible mode to handle Cloudflare
+    headless: bool = True  # Must be True in production (no XServer on Railway)
 
 
 class ScrapeResponse(BaseModel):
@@ -213,7 +213,7 @@ async def run_scrape_pipeline(
     max_emails: int,
     run_extraction: bool,
     run_predictions: bool,
-    headless: bool = False,
+    headless: bool = True,
 ):
     """
     Run the full scrape -> extract -> predict pipeline.
