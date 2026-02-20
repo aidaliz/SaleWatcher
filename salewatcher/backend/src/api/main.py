@@ -34,7 +34,17 @@ async def run_schema_migrations() -> None:
               AND email_id IS NOT NULL
         """))
 
-        # 2. Add status column (was review_status in old schema)
+        # 2. Create extractionstatus enum type if it doesn't exist
+        await conn.execute(text("""
+            DO $$ BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'extractionstatus') THEN
+                CREATE TYPE extractionstatus AS ENUM
+                  ('pending', 'processed', 'needs_review', 'approved', 'rejected');
+              END IF;
+            END $$
+        """))
+
+        # 3. Add status column as proper enum (was review_status / VARCHAR in old schema)
         await conn.execute(text("""
             ALTER TABLE extracted_sales
             ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending'
@@ -42,7 +52,13 @@ async def run_schema_migrations() -> None:
         await conn.execute(text("""
             UPDATE extracted_sales
             SET status = COALESCE(review_status, 'pending')
-            WHERE status IS NULL OR status = 'pending'
+            WHERE status IS NULL
+        """))
+        # Cast column to enum type
+        await conn.execute(text("""
+            ALTER TABLE extracted_sales
+            ALTER COLUMN status TYPE extractionstatus
+            USING status::extractionstatus
         """))
 
         # 3. Add is_sale column if missing
