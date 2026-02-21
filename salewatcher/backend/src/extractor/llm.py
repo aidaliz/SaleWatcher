@@ -160,12 +160,7 @@ class SaleExtractor:
         Returns:
             ExtractedSale with extraction results
         """
-        # First try with Haiku
+        # Use Haiku for all extractions — low-confidence results land in Review Queue
+        # (Sonnet fallback disabled: broader API key compatibility + cost savings)
         extracted = await self.extract(raw_email, brand_name, use_sonnet=False)
-
-        # If low confidence, retry with Sonnet
-        if extracted.confidence < self.confidence_threshold:
-            logger.info(f"Low confidence ({extracted.confidence}), retrying with Sonnet...")
-            extracted = await self.extract(raw_email, brand_name, use_sonnet=True)
-
         return extracted
