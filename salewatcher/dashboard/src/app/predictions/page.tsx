@@ -101,6 +101,17 @@ export default function PredictionsPage() {
     });
   };
 
+  const formatDiscount = (value: number | null, type: string | null): string => {
+    const v = value ?? 0;
+    const t = (type ?? '').toUpperCase();
+    if (t === 'PERCENTAGE') return `${parseFloat(v.toFixed(1))}%`;
+    if (t === 'FIXED_AMOUNT') return `$${parseFloat(v.toFixed(1))} off`;
+    if (t === 'BOGO') return `${v > 0 ? parseFloat(v.toFixed(1)) + '%' : '50%'} BOGO`;
+    if (t === 'FREE_SHIPPING') return 'Free Shipping';
+    if (v > 0) return `${parseFloat(v.toFixed(1))}%`;
+    return type ?? 'Other';
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -339,7 +350,7 @@ export default function PredictionsPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">
-                          {prediction.expected_discount}% {prediction.discount_type}
+                          {formatDiscount(prediction.expected_discount, prediction.discount_type)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title={prediction.discount_summary}>
