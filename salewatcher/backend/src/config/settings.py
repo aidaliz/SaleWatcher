@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     scrape_retry_attempts: int = 3
 
     # LLM settings
-    llm_haiku_model: str = "claude-3-5-haiku-20241022"
-    llm_sonnet_model: str = "claude-sonnet-4-20250514"
+    llm_haiku_model: str = "claude-3-haiku-20240307"
+    llm_sonnet_model: str = "claude-3-5-sonnet-20241022"
     llm_confidence_threshold: float = 0.7
     llm_review_threshold: float = 0.5
 
