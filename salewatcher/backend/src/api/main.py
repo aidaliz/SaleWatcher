@@ -78,30 +78,36 @@ async def run_schema_migrations() -> None:
             WHERE extracted_at IS NULL
         """))
 
-        # 5. Add columns added by newer schema that may not exist in older DBs
-        for col_sql in [
-            "ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)",
-            "ADD COLUMN IF NOT EXISTS discount_value FLOAT",
-            "ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)",
-            "ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'",
-            "ADD COLUMN IF NOT EXISTS sale_start TIMESTAMP",
-            "ADD COLUMN IF NOT EXISTS sale_end TIMESTAMP",
-            "ADD COLUMN IF NOT EXISTS confidence FLOAT",
-            "ADD COLUMN IF NOT EXISTS model_used VARCHAR(100)",
-            "ADD COLUMN IF NOT EXISTS review_notes TEXT",
-            "ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
-            "ADD COLUMN IF NOT EXISTS sale_window_id UUID REFERENCES sale_windows(id)",
-        ]:
-            try:
-                await conn.execute(text(f"ALTER TABLE extracted_sales {col_sql}"))
-            except Exception:
-                pass  # column already exists or FK target missing — safe to skip
-
-        # 6. Ensure new tables exist (create_all for new models only)
+        # 5. Ensure new tables exist (create_all for new models only)
         from src.db.models import Base
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
             sync_conn, checkfirst=True
         ))
+
+    # 6. Add newer-schema columns — each in its own transaction so one
+    #    failure doesn't abort the rest (PostgreSQL aborts on first error).
+    newer_cols = [
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_value FLOAT",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_start TIMESTAMP",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_end TIMESTAMP",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS confidence FLOAT",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS model_used VARCHAR(100)",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS review_notes TEXT",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
+        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_window_id UUID",
+    ]
+    for ddl in newer_cols:
+        try:
+            async with engine.begin() as c:
+                await c.execute(text(ddl))
+        except Exception as exc:
+            # Column already exists → ignore; log anything else
+            if "already exists" not in str(exc).lower():
+                import logging as _log
+                _log.getLogger(__name__).warning(f"Migration skipped: {ddl!r} — {exc}")
 
 # Configure logging
 logging.basicConfig(
