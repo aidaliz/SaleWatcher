@@ -79,15 +79,24 @@ async def run_schema_migrations() -> None:
         WHERE status IS NULL
     """, "backfill status")
 
-    # Convert discount_type columns from SQLEnum to VARCHAR (discounttype pg enum may not exist)
-    await _run(
-        "ALTER TABLE sale_windows ALTER COLUMN discount_type TYPE VARCHAR(50) USING discount_type::VARCHAR",
-        "sale_windows discount_type → VARCHAR"
-    )
-    await _run(
-        "ALTER TABLE predictions ALTER COLUMN discount_type TYPE VARCHAR(50) USING discount_type::VARCHAR",
-        "predictions discount_type → VARCHAR"
-    )
+    # sale_windows table — add any missing columns
+    for name, ddl in [
+        ("year",             "ADD COLUMN IF NOT EXISTS year INTEGER"),
+        ("start_date",       "ADD COLUMN IF NOT EXISTS start_date TIMESTAMP"),
+        ("end_date",         "ADD COLUMN IF NOT EXISTS end_date TIMESTAMP"),
+        ("discount_type",    "ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50) DEFAULT 'OTHER'"),
+        ("discount_value",   "ADD COLUMN IF NOT EXISTS discount_value FLOAT DEFAULT 0"),
+        ("discount_summary", "ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)"),
+        ("categories",       "ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'"),
+        ("holiday_anchor",   "ADD COLUMN IF NOT EXISTS holiday_anchor VARCHAR(100)"),
+        ("days_from_holiday","ADD COLUMN IF NOT EXISTS days_from_holiday INTEGER"),
+        ("created_at",       "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()"),
+    ]:
+        await _run(f"ALTER TABLE sale_windows {ddl}", f"sale_windows.{name}")
+
+    # Drop NOT NULL on required sale_windows columns that may have been created with constraints
+    for col in ["discount_type", "discount_value", "discount_summary", "year", "start_date", "end_date"]:
+        await _run(f"ALTER TABLE sale_windows ALTER COLUMN {col} DROP NOT NULL", f"sale_windows nullable {col}")
 
     # predictions table — add all columns that may be missing from older create_all runs
     for name, ddl in [
