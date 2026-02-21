@@ -14,100 +14,65 @@ from src.api.routes import api_router
 
 
 async def run_schema_migrations() -> None:
-    """Apply safe, idempotent schema migrations at startup.
+    """Apply safe idempotent schema migrations at startup.
 
-    Handles the gap between the old backend schema (email_id, review_status)
-    and the new backend model (raw_email_id, status).
+    Every step runs in its own transaction so one failure never blocks the rest.
     """
+    import logging as _log
+    _logger = _log.getLogger(__name__)
     engine = get_async_engine()
-    async with engine.begin() as conn:
-        # 1. Add raw_email_id to extracted_sales (was email_id in old schema)
-        await conn.execute(text("""
-            ALTER TABLE extracted_sales
-            ADD COLUMN IF NOT EXISTS raw_email_id UUID REFERENCES raw_emails(id)
-        """))
-        # Copy email_id → raw_email_id for existing rows
-        await conn.execute(text("""
-            UPDATE extracted_sales
-            SET raw_email_id = email_id
-            WHERE raw_email_id IS NULL
-              AND email_id IS NOT NULL
-        """))
 
-        # 2. Create extractionstatus enum type if it doesn't exist
-        await conn.execute(text("""
-            DO $$ BEGIN
-              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'extractionstatus') THEN
-                CREATE TYPE extractionstatus AS ENUM
-                  ('pending', 'processed', 'needs_review', 'approved', 'rejected');
-              END IF;
-            END $$
-        """))
-
-        # 3. Add status column as proper enum (was review_status / VARCHAR in old schema)
-        await conn.execute(text("""
-            ALTER TABLE extracted_sales
-            ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending'
-        """))
-        await conn.execute(text("""
-            UPDATE extracted_sales
-            SET status = COALESCE(review_status, 'pending')
-            WHERE status IS NULL
-        """))
-        # Cast column to enum type
-        await conn.execute(text("""
-            ALTER TABLE extracted_sales
-            ALTER COLUMN status TYPE extractionstatus
-            USING status::extractionstatus
-        """))
-
-        # 3. Add is_sale column if missing
-        await conn.execute(text("""
-            ALTER TABLE extracted_sales
-            ADD COLUMN IF NOT EXISTS is_sale BOOLEAN DEFAULT TRUE
-        """))
-
-        # 4. Add extracted_at if missing (was created_at)
-        await conn.execute(text("""
-            ALTER TABLE extracted_sales
-            ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMP DEFAULT NOW()
-        """))
-        await conn.execute(text("""
-            UPDATE extracted_sales
-            SET extracted_at = COALESCE(created_at, NOW())
-            WHERE extracted_at IS NULL
-        """))
-
-        # 5. Ensure new tables exist (create_all for new models only)
-        from src.db.models import Base
-        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(
-            sync_conn, checkfirst=True
-        ))
-
-    # 6. Add newer-schema columns — each in its own transaction so one
-    #    failure doesn't abort the rest (PostgreSQL aborts on first error).
-    newer_cols = [
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_value FLOAT",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_start TIMESTAMP",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_end TIMESTAMP",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS confidence FLOAT",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS model_used VARCHAR(100)",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS review_notes TEXT",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
-        "ALTER TABLE extracted_sales ADD COLUMN IF NOT EXISTS sale_window_id UUID",
-    ]
-    for ddl in newer_cols:
+    async def _run(sql: str, label: str = "") -> None:
         try:
             async with engine.begin() as c:
-                await c.execute(text(ddl))
+                await c.execute(text(sql))
         except Exception as exc:
-            # Column already exists → ignore; log anything else
-            if "already exists" not in str(exc).lower():
-                import logging as _log
-                _log.getLogger(__name__).warning(f"Migration skipped: {ddl!r} — {exc}")
+            msg = str(exc).lower()
+            if "already exists" not in msg and "duplicate" not in msg:
+                _logger.warning(f"Migration skipped ({label}): {exc}")
+
+    # Column additions — each in its own transaction
+    for name, ddl in [
+        ("raw_email_id",    "ADD COLUMN IF NOT EXISTS raw_email_id UUID REFERENCES raw_emails(id)"),
+        ("is_sale",         "ADD COLUMN IF NOT EXISTS is_sale BOOLEAN DEFAULT TRUE"),
+        ("status",          "ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \'pending\'"),
+        ("extracted_at",    "ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMP DEFAULT NOW()"),
+        ("discount_type",   "ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)"),
+        ("discount_value",  "ADD COLUMN IF NOT EXISTS discount_value FLOAT"),
+        ("discount_summary","ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)"),
+        ("categories",      "ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT \'{}\'"),
+        ("sale_start",      "ADD COLUMN IF NOT EXISTS sale_start TIMESTAMP"),
+        ("sale_end",        "ADD COLUMN IF NOT EXISTS sale_end TIMESTAMP"),
+        ("confidence",      "ADD COLUMN IF NOT EXISTS confidence FLOAT"),
+        ("model_used",      "ADD COLUMN IF NOT EXISTS model_used VARCHAR(100)"),
+        ("review_notes",    "ADD COLUMN IF NOT EXISTS review_notes TEXT"),
+        ("reviewed_at",     "ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP"),
+        ("sale_window_id",  "ADD COLUMN IF NOT EXISTS sale_window_id UUID"),
+    ]:
+        await _run(f"ALTER TABLE extracted_sales {ddl}", f"extracted_sales.{name}")
+
+    # Data backfills
+    await _run("""
+        UPDATE extracted_sales SET raw_email_id = email_id
+        WHERE raw_email_id IS NULL AND email_id IS NOT NULL
+    """, "backfill raw_email_id")
+    await _run("""
+        UPDATE extracted_sales SET extracted_at = COALESCE(created_at, NOW())
+        WHERE extracted_at IS NULL
+    """, "backfill extracted_at")
+    await _run("""
+        UPDATE extracted_sales SET status = COALESCE(review_status, 'pending')
+        WHERE status IS NULL
+    """, "backfill status")
+
+    # Create any new tables
+    try:
+        async with engine.begin() as c:
+            from src.db.models import Base
+            await c.run_sync(lambda sc: Base.metadata.create_all(sc, checkfirst=True))
+    except Exception as exc:
+        _logger.warning(f"create_all skipped: {exc}")
+
 
 # Configure logging
 logging.basicConfig(
