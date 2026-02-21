@@ -94,8 +94,10 @@ async def run_schema_migrations() -> None:
     ]:
         await _run(f"ALTER TABLE sale_windows {ddl}", f"sale_windows.{name}")
 
-    # Drop NOT NULL on required sale_windows columns that may have been created with constraints
-    for col in ["discount_type", "discount_value", "discount_summary", "year", "start_date", "end_date"]:
+    # Drop NOT NULL on sale_windows columns (old schema may have extra NOT NULL constraints)
+    for col in ["name", "discount_type", "discount_value", "discount_summary",
+                "year", "start_date", "end_date", "categories", "holiday_anchor",
+                "days_from_holiday", "prediction_date"]:
         await _run(f"ALTER TABLE sale_windows ALTER COLUMN {col} DROP NOT NULL", f"sale_windows nullable {col}")
 
     # predictions table — add all columns that may be missing from older create_all runs
