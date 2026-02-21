@@ -59,6 +59,9 @@ def find_holiday_anchor(date: datetime) -> tuple[Optional[str], Optional[int]]:
     Returns:
         Tuple of (holiday_name, days_from_holiday) or (None, None)
     """
+    # Normalize to datetime so subtraction works regardless of input type
+    if not isinstance(date, datetime):
+        date = datetime(date.year, date.month, date.day)
     year = date.year
 
     for holiday_name, (month, day) in HOLIDAYS.items():
