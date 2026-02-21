@@ -31,6 +31,12 @@ async def run_schema_migrations() -> None:
             if "already exists" not in msg and "duplicate" not in msg:
                 _logger.warning(f"Migration skipped ({label}): {exc}")
 
+    # Make legacy email_id nullable (old schema had it NOT NULL; new model uses raw_email_id)
+    await _run(
+        "ALTER TABLE extracted_sales ALTER COLUMN email_id DROP NOT NULL",
+        "drop NOT NULL on email_id"
+    )
+
     # Column additions — each in its own transaction
     for name, ddl in [
         ("raw_email_id",    "ADD COLUMN IF NOT EXISTS raw_email_id UUID REFERENCES raw_emails(id)"),
