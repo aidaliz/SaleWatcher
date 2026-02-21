@@ -79,6 +79,16 @@ async def run_schema_migrations() -> None:
         WHERE status IS NULL
     """, "backfill status")
 
+    # Convert discount_type columns from SQLEnum to VARCHAR (discounttype pg enum may not exist)
+    await _run(
+        "ALTER TABLE sale_windows ALTER COLUMN discount_type TYPE VARCHAR(50) USING discount_type::VARCHAR",
+        "sale_windows discount_type → VARCHAR"
+    )
+    await _run(
+        "ALTER TABLE predictions ALTER COLUMN discount_type TYPE VARCHAR(50) USING discount_type::VARCHAR",
+        "predictions discount_type → VARCHAR"
+    )
+
     # predictions table — add all columns that may be missing from older create_all runs
     for name, ddl in [
         ("source_window_id",  "ADD COLUMN IF NOT EXISTS source_window_id UUID"),

@@ -184,11 +184,15 @@ async def create_sale_windows(
             if not start_dates:
                 continue
 
-            window_start = min(start_dates)
-            window_end = max(end_dates) if end_dates else window_start + timedelta(days=3)
+            # Ensure datetime objects (asyncpg may return date for DATE columns)
+            def _to_dt(v):
+                return datetime(v.year, v.month, v.day) if not isinstance(v, datetime) else v
+
+            window_start = _to_dt(min(start_dates))
+            window_end = _to_dt(max(end_dates)) if end_dates else window_start + timedelta(days=3)
 
             # Use the highest-confidence sale for discount info
-            best_sale = max(group, key=lambda s: s.confidence)
+            best_sale = max(group, key=lambda s: s.confidence or 0)
 
             # Find holiday anchor
             holiday_anchor, days_from_holiday = find_holiday_anchor(window_start)
@@ -199,7 +203,7 @@ async def create_sale_windows(
                 year=window_start.year,
                 start_date=window_start,
                 end_date=window_end,
-                discount_type=best_sale.discount_type or DiscountType.OTHER,
+                discount_type=str(best_sale.discount_type) if best_sale.discount_type else "OTHER",
                 discount_value=best_sale.discount_value or 0.0,
                 discount_summary=best_sale.discount_summary or "Sale",
                 categories=best_sale.categories or [],

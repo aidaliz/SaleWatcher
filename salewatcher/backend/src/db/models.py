@@ -113,7 +113,7 @@ class ExtractedSale(Base):
 
     # Extraction results
     is_sale: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    discount_type: Mapped[Optional[DiscountType]] = mapped_column(SQLEnum(DiscountType), nullable=True)
+    discount_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     discount_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     discount_summary: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
@@ -150,7 +150,7 @@ class SaleWindow(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     start_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    discount_type: Mapped[DiscountType] = mapped_column(SQLEnum(DiscountType), nullable=False)
+    discount_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     discount_value: Mapped[float] = mapped_column(Float, nullable=False)
     discount_summary: Mapped[str] = mapped_column(String(512), nullable=False)
     categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
@@ -183,7 +183,7 @@ class Prediction(Base):
     target_year: Mapped[int] = mapped_column(Integer, nullable=False)
     predicted_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     predicted_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    discount_type: Mapped[DiscountType] = mapped_column(SQLEnum(DiscountType), nullable=False)
+    discount_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     expected_discount: Mapped[float] = mapped_column(Float, nullable=False)
     discount_summary: Mapped[str] = mapped_column(String(512), nullable=False)
     categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
