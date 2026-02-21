@@ -66,14 +66,21 @@ class ExtractionService:
         # Run extraction
         extracted = await self.extractor.extract_with_fallback(email, brand_name)
         db.add(extracted)
+
+        # Read values BEFORE commit — after commit SQLAlchemy expires the object
+        # and accessing attributes would trigger a lazy reload (MissingGreenlet)
+        is_sale = extracted.is_sale
+        confidence = extracted.confidence
+        discount_summary = extracted.discount_summary
+
         await db.commit()
 
         return {
             "status": "success",
             "email_id": str(email.id),
-            "is_sale": extracted.is_sale,
-            "confidence": extracted.confidence,
-            "discount_summary": extracted.discount_summary,
+            "is_sale": is_sale,
+            "confidence": confidence,
+            "discount_summary": discount_summary,
         }
 
     async def extract_batch(
