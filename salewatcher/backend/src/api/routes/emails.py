@@ -154,7 +154,7 @@ async def list_emails(
             is_sale=extraction.is_sale if extraction else None,
             discount_summary=extraction.discount_summary if extraction else None,
             confidence=extraction.confidence if extraction else None,
-            review_status=extraction.status.value if extraction and extraction.status else None,
+            review_status=str(extraction.status) if extraction and extraction.status else None,
         ))
 
     return EmailListResponse(
@@ -310,7 +310,7 @@ async def get_email(
         sale_start=extraction.sale_start if extraction else None,
         sale_end=extraction.sale_end if extraction else None,
         confidence=extraction.confidence if extraction else None,
-        status=extraction.status.value if extraction and extraction.status else None,
+        status=str(extraction.status) if extraction and extraction.status else None,
     )
 
 

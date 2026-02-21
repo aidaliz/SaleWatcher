@@ -36,6 +36,14 @@ async def run_schema_migrations() -> None:
         "ALTER TABLE extracted_sales ALTER COLUMN email_id DROP NOT NULL",
         "drop NOT NULL on email_id"
     )
+    # Some columns may have been added NOT NULL in earlier partial runs — make them nullable
+    for col in ["discount_type", "discount_value", "discount_summary",
+                "categories", "sale_start", "sale_end", "confidence",
+                "model_used", "review_notes", "reviewed_at", "sale_window_id"]:
+        await _run(
+            f"ALTER TABLE extracted_sales ALTER COLUMN {col} DROP NOT NULL",
+            f"nullable {col}"
+        )
 
     # Column additions — each in its own transaction
     for name, ddl in [
