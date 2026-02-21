@@ -84,6 +84,7 @@ async def run_schema_migrations() -> None:
         ("target_year",       "ADD COLUMN IF NOT EXISTS target_year INTEGER"),
         ("predicted_start",   "ADD COLUMN IF NOT EXISTS predicted_start TIMESTAMP"),
         ("predicted_end",     "ADD COLUMN IF NOT EXISTS predicted_end TIMESTAMP"),
+        ("discount_type",     "ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)"),
         ("expected_discount", "ADD COLUMN IF NOT EXISTS expected_discount FLOAT"),
         ("discount_summary",  "ADD COLUMN IF NOT EXISTS discount_summary VARCHAR(512)"),
         ("categories",        "ADD COLUMN IF NOT EXISTS categories TEXT[] DEFAULT '{}'"),
