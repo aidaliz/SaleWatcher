@@ -25,11 +25,11 @@ class Base(DeclarativeBase):
 
 class DiscountType(str, Enum):
     """Type of discount offered in a sale."""
-    PERCENTAGE = "percentage"
-    FIXED_AMOUNT = "fixed_amount"
-    BOGO = "bogo"
-    FREE_SHIPPING = "free_shipping"
-    OTHER = "other"
+    PERCENTAGE = "PERCENTAGE"
+    FIXED_AMOUNT = "FIXED_AMOUNT"
+    BOGO = "BOGO"
+    FREE_SHIPPING = "FREE_SHIPPING"
+    OTHER = "OTHER"
 
 
 class ExtractionStatus(str, Enum):

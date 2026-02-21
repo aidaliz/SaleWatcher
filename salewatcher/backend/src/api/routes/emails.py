@@ -303,7 +303,7 @@ async def get_email(
         milled_url=email.milled_url,
         is_extracted=extraction is not None,
         is_sale=extraction.is_sale if extraction else None,
-        discount_type=extraction.discount_type.value if extraction and extraction.discount_type else None,
+        discount_type=str(extraction.discount_type) if extraction and extraction.discount_type else None,
         discount_value=extraction.discount_value if extraction else None,
         discount_summary=extraction.discount_summary if extraction else None,
         categories=extraction.categories if extraction else None,
