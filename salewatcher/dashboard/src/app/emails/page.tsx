@@ -20,6 +20,7 @@ export default function EmailsPage() {
   // Batch extraction
   const [batchExtracting, setBatchExtracting] = useState(false);
   const [batchLimit, setBatchLimit] = useState(50);
+  const [batchReprocess, setBatchReprocess] = useState(false);
 
   // Updating extraction
   const [updating, setUpdating] = useState(false);
@@ -114,7 +115,7 @@ export default function EmailsPage() {
       const result = await emailsApi.extractBatch({
         brand_id: selectedBrand || undefined,
         limit: batchLimit,
-        reprocess: false,
+        reprocess: batchReprocess,
       });
       setSuccess(`Batch extraction complete: ${result.processed} extracted, ${result.errors} errors`);
       // Refresh the data
@@ -301,7 +302,16 @@ export default function EmailsPage() {
             {stats ? `${stats.not_extracted} emails not yet extracted` : 'Loading...'}
             {selectedBrand && ' (filtered by brand)'}
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={batchReprocess}
+                onChange={(e) => setBatchReprocess(e.target.checked)}
+                className="rounded border-gray-300 text-purple-600"
+              />
+              Reprocess existing
+            </label>
             <label className="text-sm font-medium text-gray-700">Limit:</label>
             <select
               value={batchLimit}
@@ -312,6 +322,7 @@ export default function EmailsPage() {
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
+              <option value={200}>All</option>
             </select>
             <button
               onClick={handleBatchExtract}
