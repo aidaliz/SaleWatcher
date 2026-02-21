@@ -79,8 +79,9 @@ async def run_schema_migrations() -> None:
         WHERE status IS NULL
     """, "backfill status")
 
-    # predictions table — add columns that may be missing from older create_all runs
+    # predictions table — add all columns that may be missing from older create_all runs
     for name, ddl in [
+        ("source_window_id",  "ADD COLUMN IF NOT EXISTS source_window_id UUID"),
         ("target_year",       "ADD COLUMN IF NOT EXISTS target_year INTEGER"),
         ("predicted_start",   "ADD COLUMN IF NOT EXISTS predicted_start TIMESTAMP"),
         ("predicted_end",     "ADD COLUMN IF NOT EXISTS predicted_end TIMESTAMP"),
@@ -91,6 +92,7 @@ async def run_schema_migrations() -> None:
         ("confidence",        "ADD COLUMN IF NOT EXISTS confidence FLOAT"),
         ("synced_to_calendar","ADD COLUMN IF NOT EXISTS synced_to_calendar BOOLEAN DEFAULT FALSE"),
         ("calendar_event_id", "ADD COLUMN IF NOT EXISTS calendar_event_id VARCHAR(255)"),
+        ("created_at",        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()"),
     ]:
         await _run(f"ALTER TABLE predictions {ddl}", f"predictions.{name}")
 
