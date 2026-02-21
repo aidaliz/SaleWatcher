@@ -56,12 +56,15 @@ def project_date_to_year(
 
     # Fall back to same month/day
     try:
+        # Handle both datetime.date and datetime.datetime
+        hour = getattr(original_date, 'hour', 0)
+        minute = getattr(original_date, 'minute', 0)
         return datetime(
             target_year,
             original_date.month,
             original_date.day,
-            original_date.hour,
-            original_date.minute,
+            hour,
+            minute,
         )
     except ValueError:
         # Handle Feb 29 -> Feb 28 for non-leap years
