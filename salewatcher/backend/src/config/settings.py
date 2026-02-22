@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Dashboard
     dashboard_url: str = "http://localhost:3000"
 
+    # OA Leads Alert integration
+    oa_leads_webhook_url: str = ""  # POST sale predictions here (e.g. https://oa-leads.example.com/webhooks/sale-prediction)
+    oa_leads_webhook_secret: str = ""  # Optional HMAC-SHA256 signing secret
+
     # Scraping settings
     scrape_delay_seconds: float = 2.0
     scrape_retry_attempts: int = 3

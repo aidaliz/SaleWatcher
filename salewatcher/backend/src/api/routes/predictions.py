@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import get_db
+from src.config.settings import get_settings
 from src.db.models import Prediction, PredictionOutcome, PredictionResult, SaleWindow, ExtractedSale, Brand
 from src.db.schemas import (
     PredictionListResponse,
@@ -196,6 +197,52 @@ async def generate_predictions_endpoint(
             years_ahead=request.years_ahead,
         )
         predictions_created = sum(len(p) for p in all_predictions.values())
+
+    # Fire webhooks to OA Leads Alert for each new prediction
+    sw_settings = get_settings()
+    if sw_settings.oa_leads_webhook_url:
+        import asyncio
+        from src.notifier.webhook_sender import post_prediction_webhook
+
+        # Collect all generated predictions for webhook delivery
+        all_preds: list[Prediction] = []
+        if request.target_year:
+            result = await db.execute(
+                select(Prediction).options(selectinload(Prediction.brand))
+                .where(Prediction.target_year == request.target_year)
+            )
+            all_preds = list(result.scalars().all())
+        else:
+            for year_preds in all_predictions.values():
+                all_preds.extend(year_preds)
+
+        webhook_tasks = []
+        for pred in all_preds:
+            # Use salesgazer_domain as retailer domain; fall back to milled_slug
+            retailer_domain = ""
+            if pred.brand:
+                retailer_domain = pred.brand.salesgazer_domain or pred.brand.milled_slug or ""
+
+            payload = {
+                "retailer_domain": retailer_domain,
+                "discount_pct": str(round(pred.expected_discount, 2)),
+                "discount_type": pred.discount_type,
+                "predicted_start": pred.predicted_start.isoformat(),
+                "predicted_end": pred.predicted_end.isoformat() if pred.predicted_end else None,
+                "confidence": pred.confidence,
+                "brand_name": pred.brand.name if pred.brand else None,
+            }
+            if retailer_domain and payload["predicted_start"]:
+                webhook_tasks.append(
+                    post_prediction_webhook(
+                        payload,
+                        sw_settings.oa_leads_webhook_url,
+                        sw_settings.oa_leads_webhook_secret,
+                    )
+                )
+
+        if webhook_tasks:
+            await asyncio.gather(*webhook_tasks, return_exceptions=True)
 
     return GeneratePredictionsResponse(
         status="success",
