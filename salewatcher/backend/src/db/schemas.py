@@ -18,7 +18,7 @@ class BrandBase(BaseModel):
 
 class BrandCreate(BrandBase):
     """Schema for creating a new brand."""
-    pass
+    salesgazer_domain: Optional[str] = Field(None, max_length=255)
 
 
 class BrandUpdate(BaseModel):
@@ -27,6 +27,7 @@ class BrandUpdate(BaseModel):
     milled_slug: Optional[str] = Field(None, min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9-]+$")
     is_active: Optional[bool] = None
     excluded_categories: Optional[list[str]] = None
+    salesgazer_domain: Optional[str] = Field(None, max_length=255)
 
 
 class BrandResponse(BrandBase):
@@ -35,6 +36,7 @@ class BrandResponse(BrandBase):
 
     id: UUID
     is_active: bool
+    salesgazer_domain: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -53,6 +53,7 @@ async def create_brand(db: AsyncSession, brand: BrandCreate) -> Brand:
         name=brand.name,
         milled_slug=brand.milled_slug,
         excluded_categories=brand.excluded_categories,
+        salesgazer_domain=brand.salesgazer_domain,
     )
     db.add(db_brand)
     await db.flush()

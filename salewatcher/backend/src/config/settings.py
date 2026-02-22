@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     gmail_client_secret: str = ""
     gmail_redirect_uri: str = "http://localhost:8000/api/email/gmail/auth/callback"
 
+    # SalesGazer
+    salesgazer_email: str = ""
+    salesgazer_password: str = ""
+
     # Resend email
     resend_api_key: str = ""
     notification_email: str = ""
