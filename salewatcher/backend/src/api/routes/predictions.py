@@ -47,13 +47,14 @@ class GeneratePredictionsResponse(BaseModel):
 
 @router.get("", response_model=PredictionListResponse)
 async def list_predictions(
+    offset: int = Query(0, ge=0, alias="offset"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     brand_id: Optional[UUID] = None,
     target_year: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """List predictions with optional filters."""
+    """List predictions with optional filters. Supports both ?offset= and ?skip= for pagination."""
     query = select(Prediction).options(selectinload(Prediction.brand))
     count_query = select(func.count(Prediction.id))
 
@@ -69,8 +70,11 @@ async def list_predictions(
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
+    # Support both ?offset= (REST standard) and ?skip= (legacy); offset takes precedence
+    page_offset = offset if offset > 0 else skip
+
     # Get predictions
-    query = query.order_by(Prediction.predicted_start.desc()).offset(skip).limit(limit)
+    query = query.order_by(Prediction.predicted_start.desc()).offset(page_offset).limit(limit)
     result = await db.execute(query)
     predictions = list(result.scalars().all())
 
