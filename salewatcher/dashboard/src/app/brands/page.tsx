@@ -52,11 +52,11 @@ export default function BrandsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Brands</h1>
         <Link
           href="/brands/new"
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center px-4 py-2 min-h-[40px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Add Brand
         </Link>
@@ -77,83 +77,133 @@ export default function BrandsPage() {
           </p>
           <Link
             href="/brands/new"
-            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-block px-4 py-2 min-h-[40px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Add Your First Brand
           </Link>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Brand Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Milled Slug
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Excluded Categories
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {brands.map((brand) => (
-                <tr key={brand.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+          {/* Mobile card view */}
+          <div className="block sm:hidden divide-y divide-gray-200">
+            {brands.map((brand) => (
+              <div key={brand.id} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
                     <div className="font-medium text-gray-900">{brand.name}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">
+                    <code className="text-xs bg-gray-100 px-2 py-0.5 rounded mt-1 inline-block">
                       {brand.milled_slug}
                     </code>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        brand.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {brand.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {brand.excluded_categories.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {brand.excluded_categories.map((cat) => (
-                          <span
-                            key={cat}
-                            className="inline-flex px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
-                          >
-                            {cat}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">None</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                    <button
-                      onClick={() => handleDelete(brand.id, brand.name)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Deactivate
-                    </button>
-                  </td>
+                  </div>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0 ${
+                      brand.is_active
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {brand.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                {brand.excluded_categories.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-xs text-gray-500 mr-1">Excluded:</span>
+                    {brand.excluded_categories.map((cat) => (
+                      <span
+                        key={cat}
+                        className="inline-flex px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
+                      >
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-1">
+                  <button
+                    onClick={() => handleDelete(brand.id, brand.name)}
+                    className="text-sm text-red-600 hover:text-red-900 min-h-[40px] px-2"
+                  >
+                    Deactivate
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Brand Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Milled Slug
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Excluded Categories
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {brands.map((brand) => (
+                  <tr key={brand.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-medium text-gray-900">{brand.name}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <code className="text-sm bg-gray-100 px-2 py-1 rounded">
+                        {brand.milled_slug}
+                      </code>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          brand.is_active
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {brand.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {brand.excluded_categories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {brand.excluded_categories.map((cat) => (
+                            <span
+                              key={cat}
+                              className="inline-flex px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
+                            >
+                              {cat}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">None</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      <button
+                        onClick={() => handleDelete(brand.id, brand.name)}
+                        className="text-red-600 hover:text-red-900 min-h-[40px] px-2"
+                      >
+                        Deactivate
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           <div className="px-6 py-3 bg-gray-50 text-sm text-gray-500">
             Showing {brands.length} of {total} brands
           </div>

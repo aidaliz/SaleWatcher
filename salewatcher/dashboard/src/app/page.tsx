@@ -135,16 +135,16 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {/* Stats Grid — 2 cols on mobile, 4 on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
         {statCards.map((stat) => (
           <Link key={stat.label} href={stat.href}>
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow cursor-pointer">
-              <div className={`w-12 h-12 ${stat.color} rounded-lg flex items-center justify-center text-white text-xl mb-4`}>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6 hover:shadow-lg transition-shadow cursor-pointer">
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 ${stat.color} rounded-lg flex items-center justify-center text-white text-lg sm:text-xl mb-3 sm:mb-4`}>
                 {typeof stat.value === 'number' ? stat.value : '%'}
               </div>
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <div className="text-sm text-gray-500">{stat.label}</div>
+              <div className="text-xl sm:text-2xl font-bold text-gray-900">{stat.value}</div>
+              <div className="text-xs sm:text-sm text-gray-500">{stat.label}</div>
             </div>
           </Link>
         ))}
@@ -152,32 +152,41 @@ export default function HomePage() {
 
       {/* Calendar View */}
       <div className="bg-white rounded-lg shadow mb-8">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-gray-900">Sale Calendar</h2>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => navigateMonth(-1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors"
             >
               &larr;
             </button>
-            <span className="font-medium min-w-[150px] text-center">
+            <span className="font-medium text-sm sm:text-base min-w-[110px] sm:min-w-[150px] text-center">
               {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </span>
             <button
               onClick={() => navigateMonth(1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors"
             >
               &rarr;
             </button>
           </div>
         </div>
-        <div className="p-4">
-          {/* Day headers */}
+        <div className="p-2 sm:p-4">
+          {/* Day headers — single letter on mobile, abbreviated on desktop */}
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
-                {day}
+            {[
+              { full: 'Sun', short: 'S' },
+              { full: 'Mon', short: 'M' },
+              { full: 'Tue', short: 'T' },
+              { full: 'Wed', short: 'W' },
+              { full: 'Thu', short: 'T' },
+              { full: 'Fri', short: 'F' },
+              { full: 'Sat', short: 'S' },
+            ].map((day) => (
+              <div key={day.full} className="text-center text-xs sm:text-sm font-medium text-gray-500 py-2">
+                <span className="sm:hidden">{day.short}</span>
+                <span className="hidden sm:inline">{day.full}</span>
               </div>
             ))}
           </div>
@@ -187,26 +196,28 @@ export default function HomePage() {
               <div
                 key={index}
                 onClick={() => day.predictions.length > 0 && setSelectedDay(day)}
-                className={`min-h-[80px] p-1 border rounded-lg ${
+                className={`min-h-[48px] sm:min-h-[80px] p-1 border rounded-lg ${
                   day.isCurrentMonth ? 'bg-white' : 'bg-gray-50'
                 } ${day.predictions.length > 0 ? 'border-blue-300 cursor-pointer hover:bg-blue-50' : 'border-gray-200'}`}
               >
-                <div className={`text-sm ${day.isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
+                <div className={`text-xs sm:text-sm ${day.isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
                   {day.date.getDate()}
                 </div>
                 {day.predictions.length > 0 && (
                   <div className="mt-1 space-y-1">
+                    {/* On mobile just show a dot indicator; on sm+ show label */}
+                    <div className="sm:hidden w-2 h-2 rounded-full bg-blue-500 mx-auto" />
                     {day.predictions.slice(0, 2).map((pred, i) => (
                       <div
                         key={i}
-                        className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded truncate"
+                        className="hidden sm:block text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded truncate"
                         title={`${pred.brand?.name}: ${pred.discount_summary}`}
                       >
                         {pred.brand?.name}
                       </div>
                     ))}
                     {day.predictions.length > 2 && (
-                      <div className="text-xs text-gray-500">
+                      <div className="hidden sm:block text-xs text-gray-500">
                         +{day.predictions.length - 2} more
                       </div>
                     )}
@@ -220,22 +231,22 @@ export default function HomePage() {
 
       {/* Prediction Details Modal */}
       {selectedDay && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedDay(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedDay(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
                 Predictions for {selectedDay.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
               </h3>
-              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-2xl min-h-[40px] min-w-[40px] flex items-center justify-center">&times;</button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
               {selectedDay.predictions.length === 0 ? (
                 <p className="text-gray-500">No predictions for this day.</p>
               ) : (
                 <div className="space-y-4">
                   {selectedDay.predictions.map((pred, i) => (
                     <div key={i} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                         <span className="font-semibold text-gray-900">{pred.brand?.name}</span>
                         <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
                           {Math.round(pred.confidence * 100)}% confidence
@@ -262,10 +273,10 @@ export default function HomePage() {
 
       {/* Recent Predictions List */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Upcoming Predictions</h2>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {recentPredictions.length === 0 ? (
             <p className="text-gray-500 text-center py-4">
               No upcoming predictions in the next year. Navigate the calendar above to see future predictions.
@@ -273,7 +284,7 @@ export default function HomePage() {
           ) : (
             <div className="space-y-4">
               {recentPredictions.map((prediction) => (
-                <div key={prediction.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div key={prediction.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-gray-50 rounded-lg">
                   <div>
                     <div className="font-medium text-gray-900">
                       {prediction.brand?.name || 'Unknown Brand'}
@@ -282,7 +293,7 @@ export default function HomePage() {
                       {prediction.discount_summary}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="sm:text-right">
                     <div className="text-sm font-medium text-gray-900">
                       {new Date(prediction.predicted_start).toLocaleDateString()}
                     </div>

@@ -20,6 +20,7 @@ export default function EmailsPage() {
   // Batch extraction
   const [batchExtracting, setBatchExtracting] = useState(false);
   const [batchLimit, setBatchLimit] = useState(50);
+  const [batchReprocess, setBatchReprocess] = useState(false);
 
   // Updating extraction
   const [updating, setUpdating] = useState(false);
@@ -114,7 +115,7 @@ export default function EmailsPage() {
       const result = await emailsApi.extractBatch({
         brand_id: selectedBrand || undefined,
         limit: batchLimit,
-        reprocess: false,
+        reprocess: batchReprocess,
       });
       setSuccess(`Batch extraction complete: ${result.processed} extracted, ${result.errors} errors`);
       // Refresh the data
@@ -237,13 +238,13 @@ export default function EmailsPage() {
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-wrap gap-4 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
             <select
               value={selectedBrand}
               onChange={(e) => { setSelectedBrand(e.target.value); setPage(0); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Brands</option>
               {brands.map((brand) => (
@@ -256,7 +257,7 @@ export default function EmailsPage() {
             <select
               value={selectedSource}
               onChange={(e) => { setSelectedSource(e.target.value as any); setPage(0); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Sources</option>
               <option value="gmail">Gmail</option>
@@ -268,7 +269,7 @@ export default function EmailsPage() {
             <select
               value={selectedExtracted}
               onChange={(e) => { setSelectedExtracted(e.target.value); setPage(0); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
               <option value="true">Extracted</option>
@@ -280,7 +281,7 @@ export default function EmailsPage() {
             <select
               value={selectedIsSale}
               onChange={(e) => { setSelectedIsSale(e.target.value); setPage(0); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
               <option value="true">Sales Only</option>
@@ -289,19 +290,28 @@ export default function EmailsPage() {
           </div>
           <button
             onClick={resetFilters}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+            className="w-full px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
           >
             Reset Filters
           </button>
         </div>
 
         {/* Batch Extract - separate row */}
-        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4 pt-4 border-t border-gray-200">
           <div className="text-sm text-gray-600">
             {stats ? `${stats.not_extracted} emails not yet extracted` : 'Loading...'}
             {selectedBrand && ' (filtered by brand)'}
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={batchReprocess}
+                onChange={(e) => setBatchReprocess(e.target.checked)}
+                className="rounded border-gray-300 text-purple-600"
+              />
+              Reprocess existing
+            </label>
             <label className="text-sm font-medium text-gray-700">Limit:</label>
             <select
               value={batchLimit}
@@ -312,6 +322,7 @@ export default function EmailsPage() {
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
+              <option value={200}>All</option>
             </select>
             <button
               onClick={handleBatchExtract}
@@ -330,7 +341,7 @@ export default function EmailsPage() {
 
       {/* Email List */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-lg font-semibold text-gray-900">
             Emails ({total.toLocaleString()} total)
           </h2>
@@ -362,7 +373,48 @@ export default function EmailsPage() {
         ) : emails.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No emails found</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile card view */}
+            <div className="sm:hidden divide-y divide-gray-200">
+              {emails.map((email) => (
+                <div key={email.id} className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{email.subject}</p>
+                      <p className="text-xs text-gray-500">{email.brand_name} · {new Date(email.sent_at).toLocaleDateString()}</p>
+                    </div>
+                    <span className={`flex-shrink-0 inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${email.source === 'gmail' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                      {email.source === 'gmail' ? 'Gmail' : 'Milled'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      {!email.is_extracted ? (
+                        <span className="inline-flex px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">Not Extracted</span>
+                      ) : email.is_sale ? (
+                        <span className="inline-flex px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800">Sale Found</span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">No Sale</span>
+                      )}
+                      {email.confidence !== null && (
+                        <span className="text-xs text-gray-400">{Math.round(email.confidence * 100)}%</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => openEmailDetail(email.id)}
+                      className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                    >
+                      View
+                    </button>
+                  </div>
+                  {email.discount_summary && (
+                    <p className="text-xs text-gray-500 mt-1 truncate">{email.discount_summary}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/* Desktop table view */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -431,7 +483,8 @@ export default function EmailsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>{/* end desktop table */}
+          </>
         )}
       </div>
 

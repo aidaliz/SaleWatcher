@@ -1,7 +1,8 @@
+import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
@@ -14,6 +15,7 @@ from src.db.schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=BrandListResponse)
@@ -36,9 +38,10 @@ async def list_brands(
 @router.post("", response_model=BrandResponse, status_code=status.HTTP_201_CREATED)
 async def create_brand(
     brand: BrandCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new brand."""
+    """Create a new brand. If salesgazer_domain is provided, triggers background sync."""
     # Check if slug already exists
     existing = await crud.get_brand_by_slug(db, brand.milled_slug)
     if existing:
@@ -48,6 +51,16 @@ async def create_brand(
         )
 
     db_brand = await crud.create_brand(db, brand)
+
+    # Trigger SalesGazer background sync if domain provided
+    if brand.salesgazer_domain:
+        background_tasks.add_task(
+            _salesgazer_background_sync,
+            brand_id=db_brand.id,
+            domain=brand.salesgazer_domain,
+        )
+        logger.info(f"Queued SalesGazer sync for new brand {db_brand.name} ({brand.salesgazer_domain})")
+
     return BrandResponse.model_validate(db_brand)
 
 
@@ -70,9 +83,10 @@ async def get_brand(
 async def update_brand(
     brand_id: UUID,
     brand_update: BrandUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a brand."""
+    """Update a brand. If salesgazer_domain is set/changed, triggers background sync."""
     # If updating slug, check for uniqueness
     if brand_update.milled_slug:
         existing = await crud.get_brand_by_slug(db, brand_update.milled_slug)
@@ -88,6 +102,16 @@ async def update_brand(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Brand not found",
         )
+
+    # Trigger SalesGazer background sync if domain was set/changed
+    if brand_update.salesgazer_domain:
+        background_tasks.add_task(
+            _salesgazer_background_sync,
+            brand_id=db_brand.id,
+            domain=brand_update.salesgazer_domain,
+        )
+        logger.info(f"Queued SalesGazer sync for updated brand {db_brand.name} ({brand_update.salesgazer_domain})")
+
     return BrandResponse.model_validate(db_brand)
 
 
@@ -121,3 +145,21 @@ async def activate_brand(
 
     db_brand = await crud.get_brand(db, brand_id)
     return BrandResponse.model_validate(db_brand)
+
+
+async def _salesgazer_background_sync(brand_id: UUID, domain: str) -> None:
+    """Background task to sync SalesGazer emails after brand create/update."""
+    from src.db.session import get_session_factory
+    from src.salesgazer.sync import sync_brand_from_salesgazer
+
+    session_factory = get_session_factory()
+    try:
+        async with session_factory() as db:
+            stats = await sync_brand_from_salesgazer(
+                brand_id=brand_id,
+                domain=domain,
+                db=db,
+            )
+            logger.info(f"SalesGazer background sync done for brand {brand_id}: {stats}")
+    except Exception as e:
+        logger.error(f"SalesGazer background sync failed for brand {brand_id}: {e}")

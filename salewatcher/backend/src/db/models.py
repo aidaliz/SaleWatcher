@@ -73,6 +73,7 @@ class Brand(Base):
     milled_slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     excluded_categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
+    salesgazer_domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -84,7 +85,7 @@ class Brand(Base):
 
 
 class RawEmail(Base):
-    """Raw email scraped from Milled.com."""
+    """Raw email scraped from Milled.com, SalesGazer, or Gmail."""
     __tablename__ = "raw_emails"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -94,6 +95,7 @@ class RawEmail(Base):
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     html_content: Mapped[str] = mapped_column(Text, nullable=False)
     scraped_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="milled", server_default="milled", nullable=False)
 
     # Relationships
     brand: Mapped["Brand"] = relationship("Brand", back_populates="raw_emails")

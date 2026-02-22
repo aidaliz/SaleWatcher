@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from sqlalchemy import text
@@ -159,6 +160,25 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _run_startup_migrations() -> None:
+    """Run lightweight column-add migrations that are safe to re-run."""
+    from src.db.session import get_async_engine
+
+    engine = get_async_engine()
+    async with engine.begin() as conn:
+        # Add source column to raw_emails if it doesn't exist
+        await conn.execute(text(
+            "ALTER TABLE raw_emails ADD COLUMN IF NOT EXISTS "
+            "source VARCHAR(50) NOT NULL DEFAULT 'milled'"
+        ))
+        # Add salesgazer_domain column to brands if it doesn't exist
+        await conn.execute(text(
+            "ALTER TABLE brands ADD COLUMN IF NOT EXISTS "
+            "salesgazer_domain VARCHAR(255)"
+        ))
+    logger.info("Startup migrations applied")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
@@ -172,6 +192,7 @@ async def lifespan(app: FastAPI):
     if settings.debug:
         await init_db()
         logger.info("Database tables created (debug mode)")
+    await _run_startup_migrations()
     yield
     # Shutdown
     logger.info("Shutting down SaleWatcher API...")
