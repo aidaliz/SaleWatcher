@@ -200,38 +200,31 @@ class SalesGazerClient:
 
                 logger.info(f"On settings page, url={page.url}")
 
-                # Try to use the search/filter input to narrow rows before waiting
+                # Use the server-side search (input[name="q"]) to filter to our domain
+                # This avoids scanning all 2300+ stores — server returns only matches
                 try:
-                    search_input = await page.query_selector(
-                        'input[type="search"], input[name="search"], input[placeholder*="search" i], input[placeholder*="filter" i]'
-                    )
+                    search_input = await page.query_selector('input[name="q"]')
                     if search_input:
                         await search_input.fill(domain)
-                        await page.wait_for_timeout(1500)
-                        logger.info(f"Used settings search filter for '{domain}'")
-                except Exception:
-                    pass
+                        await search_input.press("Enter")
+                        # Wait for page to reload with filtered results
+                        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        logger.info(f"Searched SalesGazer settings for '{domain}'")
+                    else:
+                        logger.warning("No search input (input[name='q']) found on settings page")
+                except Exception as e:
+                    logger.warning(f"Search input step failed: {e}")
 
-                # Wait for JS-rendered store rows (up to 30s — large page)
+                # Wait for JS-rendered store rows (up to 20s after search)
                 try:
-                    await page.wait_for_selector("tr[store-id]", timeout=30000)
+                    await page.wait_for_selector("tr[store-id]", timeout=20000)
                 except Exception:
-                    # Log page HTML snippet to help diagnose selector mismatch
-                    try:
-                        html_snippet = await page.content()
-                        logger.warning(
-                            f"No tr[store-id] found on settings page (url={page.url}). "
-                            f"HTML snippet (first 3000 chars): {html_snippet[:3000]}"
-                        )
-                    except Exception:
-                        logger.warning(
-                            "No tr[store-id] elements found — page may not have rendered"
-                        )
+                    logger.info(f"No tr[store-id] rows found after search for '{domain}' — domain may not exist in SalesGazer")
                     return results
 
                 # ── Extract rows ───────────────────────────────────────
                 rows = await page.query_selector_all("tr[store-id]")
-                logger.info(f"Found {len(rows)} tr[store-id] rows on settings page")
+                logger.info(f"Found {len(rows)} tr[store-id] rows after searching for '{domain}'")
                 for row in rows:
                     store_id = await row.get_attribute("store-id")
                     if not store_id:
@@ -243,11 +236,8 @@ class SalesGazerClient:
 
                     row_domain = (await tds[3].inner_text()).strip().lower()
 
-                    # Subscription checkbox (handle both spellings of the name)
-                    checkbox = await row.query_selector(
-                        'input[name="user_subscription"], '
-                        'input[name="user_susbcription"]'
-                    )
+                    # Subscription checkbox: SalesGazer uses input.form-input-styled
+                    checkbox = await row.query_selector('input[type="checkbox"]')
                     is_subscribed = bool(checkbox and await checkbox.is_checked())
 
                     if domain.lower() in row_domain or row_domain in domain.lower():
