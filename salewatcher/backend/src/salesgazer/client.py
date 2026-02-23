@@ -161,8 +161,10 @@ class SalesGazerClient:
 
             row_domain = re.sub(r"<[^>]+>", "", tds[3]).strip().lower()
 
-            # Check subscription toggle (note: typo in class name is intentional)
-            is_subscribed = "checked" in row_html and "user_susbcription" in row_html
+            # Check subscription toggle
+            is_subscribed = "checked" in row_html and (
+                "user_subscription" in row_html or "user_susbcription" in row_html
+            )
 
             if domain.lower() in row_domain or row_domain in domain.lower():
                 results.append({
