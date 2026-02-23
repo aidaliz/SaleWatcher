@@ -135,18 +135,28 @@ class SalesGazerClient:
     async def _find_store_ids_with_playwright(self, domain: str) -> list[dict]:
         """
         Use Playwright (headless Chromium) to load the JS-rendered
-        /mailbox/settings/ page, log in if necessary, and extract
-        store rows matching *domain*.
+        /mailbox/settings/ page and extract store rows matching *domain*.
 
-        This is the only method that uses Playwright; all other requests
-        remain on httpx.
+        Strategy: use the proven httpx login first, then transfer session
+        cookies into Playwright so we don't re-implement auth in the browser.
 
         Returns list of dicts: [{store_id, domain, is_subscribed}]
         """
-        email = settings.salesgazer_email
-        password = settings.salesgazer_password
-        if not email or not password:
-            raise ValueError("SALESGAZER_EMAIL and SALESGAZER_PASSWORD must be set")
+        # Ensure httpx session is logged in first (proven to work)
+        if not self._logged_in:
+            await self.login()
+
+        # Collect cookies from the httpx client to pass to Playwright
+        httpx_client = await self._get_client()
+        httpx_cookies = [
+            {
+                "name": c.name,
+                "value": c.value,
+                "domain": c.domain or "salesgazer.com",
+                "path": c.path or "/",
+            }
+            for c in httpx_client.cookies.jar
+        ]
 
         results: list[dict] = []
 
@@ -159,30 +169,35 @@ class SalesGazerClient:
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
             )
+            # Inject the httpx session cookies so Playwright is already logged in
+            if httpx_cookies:
+                await context.add_cookies(httpx_cookies)
+                logger.info(f"Injected {len(httpx_cookies)} cookies from httpx session into Playwright")
+
             page = await context.new_page()
             await stealth_async(page)
 
             try:
-                # ── Login ─────────────────────────────────────────────
-                await page.goto(
-                    f"{BASE_URL}/customer/login/", wait_until="domcontentloaded"
-                )
-                await page.fill('input[name="username"]', email)
-                await page.fill('input[name="password"]', password)
-                async with page.expect_navigation(timeout=20000):
-                    await page.click('button[type="submit"], input[type="submit"]')
-                current_url = page.url
-                if "/mailbox" not in current_url:
-                    logger.error(
-                        f"SalesGazer login appears to have failed — landed on {current_url}"
-                    )
-                    return results
-                logger.info(f"SalesGazer Playwright login OK, url={current_url}")
-
                 # ── Settings page ──────────────────────────────────────
                 await page.goto(
                     f"{BASE_URL}/mailbox/settings/", wait_until="domcontentloaded"
                 )
+
+                # If redirected to login, cookies didn't work — fall back to form login
+                if "/login" in page.url or "/customer" in page.url:
+                    logger.warning("Cookie injection didn't keep session — falling back to form login")
+                    email = settings.salesgazer_email
+                    password = settings.salesgazer_password
+                    await page.fill('input[name="username"]', email)
+                    await page.fill('input[name="password"]', password)
+                    await page.locator('button[type="submit"], input[type="submit"]').first.click()
+                    await page.wait_for_load_state("domcontentloaded", timeout=20000)
+                    if "/mailbox" not in page.url:
+                        logger.error(f"Playwright fallback login failed — url={page.url}")
+                        return results
+                    await page.goto(f"{BASE_URL}/mailbox/settings/", wait_until="domcontentloaded")
+
+                logger.info(f"On settings page, url={page.url}")
 
                 # Try to use the search/filter input to narrow rows before waiting
                 try:
@@ -200,22 +215,22 @@ class SalesGazerClient:
                 try:
                     await page.wait_for_selector("tr[store-id]", timeout=30000)
                 except Exception:
-                    # Log page HTML snippet to help debug selector mismatch
+                    # Log page HTML snippet to help diagnose selector mismatch
                     try:
                         html_snippet = await page.content()
                         logger.warning(
                             f"No tr[store-id] found on settings page (url={page.url}). "
-                            f"HTML snippet (first 2000 chars): {html_snippet[:2000]}"
+                            f"HTML snippet (first 3000 chars): {html_snippet[:3000]}"
                         )
                     except Exception:
                         logger.warning(
-                            "No tr[store-id] elements found on settings page — "
-                            "page may not have rendered or login failed"
+                            "No tr[store-id] elements found — page may not have rendered"
                         )
                     return results
 
                 # ── Extract rows ───────────────────────────────────────
                 rows = await page.query_selector_all("tr[store-id]")
+                logger.info(f"Found {len(rows)} tr[store-id] rows on settings page")
                 for row in rows:
                     store_id = await row.get_attribute("store-id")
                     if not store_id:
@@ -243,7 +258,7 @@ class SalesGazerClient:
                             }
                         )
 
-                # ── Sync CSRF + cookies back to httpx ──────────────────
+                # ── Sync any new cookies back to httpx ─────────────────
                 try:
                     csrf_input = await page.query_selector(
                         'input[name="csrfmiddlewaretoken"]'
