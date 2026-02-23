@@ -102,6 +102,26 @@ async def debug_salesgazer():
                     })
                 result["sample_rows"] = sample_rows
 
+                # ── Test search for "target.com" ──────────────────────
+                try:
+                    search_input = await page.query_selector('input[name="q"]')
+                    result["search_input_found"] = search_input is not None
+                    if search_input:
+                        await search_input.fill("target.com")
+                        await search_input.press("Enter")
+                        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        result["url_after_search"] = page.url
+                        search_rows = await page.query_selector_all("tr[store-id]")
+                        result["rows_after_search"] = len(search_rows)
+                        search_sample = []
+                        for row in search_rows[:5]:
+                            tds = await row.query_selector_all("td")
+                            td_texts = [(await td.inner_text()).strip() for td in tds[:6]]
+                            search_sample.append({"store_id": await row.get_attribute("store-id"), "tds": td_texts})
+                        result["search_sample_rows"] = search_sample
+                except Exception as e:
+                    result["search_error"] = str(e)
+
                 # Look for any search/filter inputs anywhere on page
                 all_inputs = await page.query_selector_all("input")
                 input_info = []
