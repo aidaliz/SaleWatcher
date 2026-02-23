@@ -109,7 +109,8 @@ async def debug_salesgazer():
                     if search_input:
                         await search_input.fill("target.com")
                         await search_input.press("Enter")
-                        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                        await page.wait_for_timeout(500)
                         result["url_after_search"] = page.url
                         search_rows = await page.query_selector_all("tr[store-id]")
                         result["rows_after_search"] = len(search_rows)

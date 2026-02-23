@@ -207,8 +207,9 @@ class SalesGazerClient:
                     if search_input:
                         await search_input.fill(domain)
                         await search_input.press("Enter")
-                        # Wait for page to reload with filtered results
-                        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        # Wait for AJAX response to update the table (not a page reload)
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                        await page.wait_for_timeout(500)  # small buffer for DOM update
                         logger.info(f"Searched SalesGazer settings for '{domain}'")
                     else:
                         logger.warning("No search input (input[name='q']) found on settings page")
