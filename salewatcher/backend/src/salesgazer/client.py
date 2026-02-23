@@ -3,6 +3,10 @@ SalesGazer client for fetching retail promotional emails.
 
 Uses httpx with cookie-based session auth, rate limiting (1 req/sec),
 and retry logic (3 attempts).
+
+The settings page (/mailbox/settings/) is JavaScript-rendered, so
+find_store_ids() uses Playwright (headless Chromium) for that single
+page while keeping all other requests on httpx.
 """
 import asyncio
 import logging
@@ -10,6 +14,8 @@ import re
 from typing import Optional
 
 import httpx
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import settings
@@ -126,54 +132,130 @@ class SalesGazerClient:
             f"(status {login_resp.status_code})"
         )
 
+    async def _find_store_ids_with_playwright(self, domain: str) -> list[dict]:
+        """
+        Use Playwright (headless Chromium) to load the JS-rendered
+        /mailbox/settings/ page, log in if necessary, and extract
+        store rows matching *domain*.
+
+        This is the only method that uses Playwright; all other requests
+        remain on httpx.
+
+        Returns list of dicts: [{store_id, domain, is_subscribed}]
+        """
+        email = settings.salesgazer_email
+        password = settings.salesgazer_password
+        if not email or not password:
+            raise ValueError("SALESGAZER_EMAIL and SALESGAZER_PASSWORD must be set")
+
+        results: list[dict] = []
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            )
+            page = await context.new_page()
+            await stealth_async(page)
+
+            try:
+                # ── Login ─────────────────────────────────────────────
+                await page.goto(
+                    f"{BASE_URL}/customer/login/", wait_until="networkidle"
+                )
+                await page.fill('input[name="username"]', email)
+                await page.fill('input[name="password"]', password)
+                await page.click('button[type="submit"], input[type="submit"]')
+                await page.wait_for_url(f"{BASE_URL}/mailbox/**", timeout=15000)
+
+                # ── Settings page ──────────────────────────────────────
+                await page.goto(
+                    f"{BASE_URL}/mailbox/settings/", wait_until="networkidle"
+                )
+
+                # Wait for JS-rendered store rows
+                try:
+                    await page.wait_for_selector("tr[store-id]", timeout=10000)
+                except Exception:
+                    logger.warning(
+                        "No tr[store-id] elements found on settings page — "
+                        "page may not have rendered or login failed"
+                    )
+                    return results
+
+                # ── Extract rows ───────────────────────────────────────
+                rows = await page.query_selector_all("tr[store-id]")
+                for row in rows:
+                    store_id = await row.get_attribute("store-id")
+                    if not store_id:
+                        continue
+
+                    tds = await row.query_selector_all("td")
+                    if len(tds) < 4:
+                        continue
+
+                    row_domain = (await tds[3].inner_text()).strip().lower()
+
+                    # Subscription checkbox (handle both spellings of the name)
+                    checkbox = await row.query_selector(
+                        'input[name="user_subscription"], '
+                        'input[name="user_susbcription"]'
+                    )
+                    is_subscribed = bool(checkbox and await checkbox.is_checked())
+
+                    if domain.lower() in row_domain or row_domain in domain.lower():
+                        results.append(
+                            {
+                                "store_id": store_id,
+                                "domain": row_domain,
+                                "is_subscribed": is_subscribed,
+                            }
+                        )
+
+                # ── Sync CSRF + cookies back to httpx ──────────────────
+                try:
+                    csrf_input = await page.query_selector(
+                        'input[name="csrfmiddlewaretoken"]'
+                    )
+                    if csrf_input:
+                        self._csrf_token = await csrf_input.get_attribute("value")
+                except Exception:
+                    pass
+
+                pw_cookies = await context.cookies()
+                client = await self._get_client()
+                for cookie in pw_cookies:
+                    client.cookies.set(cookie["name"], cookie["value"])
+
+            finally:
+                await browser.close()
+
+        logger.info(
+            f"Playwright: found {len(results)} stores matching '{domain}'"
+        )
+        return results
+
     async def find_store_ids(self, domain: str) -> list[dict]:
         """
         Search the settings page for stores matching a domain.
 
+        The /mailbox/settings/ page is JavaScript-rendered, so this
+        method delegates to _find_store_ids_with_playwright() which
+        launches a headless Chromium browser to obtain the real DOM.
+
         Returns list of dicts: [{store_id, domain, is_subscribed}]
         """
-        if not self._logged_in:
-            await self.login()
+        results = await self._find_store_ids_with_playwright(domain)
 
-        resp = await self._get("/mailbox/settings/")
-        html = resp.text
+        # Playwright handled the full login flow; mark session as active
+        # so subsequent httpx calls skip the login step.
+        if not self._logged_in and results is not None:
+            self._logged_in = True
 
-        # Refresh CSRF from settings page for later use
-        try:
-            self._csrf_token = self._extract_csrf(html)
-        except ValueError:
-            pass
-
-        # Parse <tr store-id="XXXX"> rows
-        results = []
-        row_pattern = re.compile(
-            r'<tr[^>]*store-id=["\'](\d+)["\'][^>]*>(.*?)</tr>',
-            re.DOTALL,
-        )
-        for match in row_pattern.finditer(html):
-            store_id = match.group(1)
-            row_html = match.group(2)
-
-            # 4th <td> contains domain name
-            tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, re.DOTALL)
-            if len(tds) < 4:
-                continue
-
-            row_domain = re.sub(r"<[^>]+>", "", tds[3]).strip().lower()
-
-            # Check subscription toggle
-            is_subscribed = "checked" in row_html and (
-                "user_subscription" in row_html or "user_susbcription" in row_html
-            )
-
-            if domain.lower() in row_domain or row_domain in domain.lower():
-                results.append({
-                    "store_id": store_id,
-                    "domain": row_domain,
-                    "is_subscribed": is_subscribed,
-                })
-
-        logger.info(f"Found {len(results)} stores matching '{domain}'")
         return results
 
     async def subscribe_to_store(self, store_id: str) -> bool:
