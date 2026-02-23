@@ -165,26 +165,53 @@ class SalesGazerClient:
             try:
                 # ── Login ─────────────────────────────────────────────
                 await page.goto(
-                    f"{BASE_URL}/customer/login/", wait_until="networkidle"
+                    f"{BASE_URL}/customer/login/", wait_until="domcontentloaded"
                 )
                 await page.fill('input[name="username"]', email)
                 await page.fill('input[name="password"]', password)
-                await page.click('button[type="submit"], input[type="submit"]')
-                await page.wait_for_url(f"{BASE_URL}/mailbox/**", timeout=15000)
+                async with page.expect_navigation(timeout=20000):
+                    await page.click('button[type="submit"], input[type="submit"]')
+                current_url = page.url
+                if "/mailbox" not in current_url:
+                    logger.error(
+                        f"SalesGazer login appears to have failed — landed on {current_url}"
+                    )
+                    return results
+                logger.info(f"SalesGazer Playwright login OK, url={current_url}")
 
                 # ── Settings page ──────────────────────────────────────
                 await page.goto(
-                    f"{BASE_URL}/mailbox/settings/", wait_until="networkidle"
+                    f"{BASE_URL}/mailbox/settings/", wait_until="domcontentloaded"
                 )
 
-                # Wait for JS-rendered store rows
+                # Try to use the search/filter input to narrow rows before waiting
                 try:
-                    await page.wait_for_selector("tr[store-id]", timeout=10000)
-                except Exception:
-                    logger.warning(
-                        "No tr[store-id] elements found on settings page — "
-                        "page may not have rendered or login failed"
+                    search_input = await page.query_selector(
+                        'input[type="search"], input[name="search"], input[placeholder*="search" i], input[placeholder*="filter" i]'
                     )
+                    if search_input:
+                        await search_input.fill(domain)
+                        await page.wait_for_timeout(1500)
+                        logger.info(f"Used settings search filter for '{domain}'")
+                except Exception:
+                    pass
+
+                # Wait for JS-rendered store rows (up to 30s — large page)
+                try:
+                    await page.wait_for_selector("tr[store-id]", timeout=30000)
+                except Exception:
+                    # Log page HTML snippet to help debug selector mismatch
+                    try:
+                        html_snippet = await page.content()
+                        logger.warning(
+                            f"No tr[store-id] found on settings page (url={page.url}). "
+                            f"HTML snippet (first 2000 chars): {html_snippet[:2000]}"
+                        )
+                    except Exception:
+                        logger.warning(
+                            "No tr[store-id] elements found on settings page — "
+                            "page may not have rendered or login failed"
+                        )
                     return results
 
                 # ── Extract rows ───────────────────────────────────────
