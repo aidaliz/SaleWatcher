@@ -152,7 +152,8 @@ class SalesGazerClient:
             {
                 "name": c.name,
                 "value": c.value,
-                "domain": c.domain or "salesgazer.com",
+                # Strip leading dot — Playwright requires clean domain (not .salesgazer.com)
+                "domain": (c.domain or "salesgazer.com").lstrip("."),
                 "path": c.path or "/",
             }
             for c in httpx_client.cookies.jar

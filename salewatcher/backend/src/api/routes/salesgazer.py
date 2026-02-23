@@ -21,6 +21,81 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+@router.get("/debug")
+async def debug_salesgazer():
+    """
+    Diagnostic endpoint: test SalesGazer login + Playwright settings page.
+    Returns cookies, current URL, and HTML snippet for debugging.
+    """
+    from playwright.async_api import async_playwright
+    try:
+        from playwright_stealth import stealth_async
+    except ImportError:
+        stealth_async = None
+
+    result: dict = {
+        "httpx_login": False,
+        "httpx_cookies": [],
+        "playwright_url": None,
+        "playwright_html_snippet": None,
+        "tr_store_id_count": 0,
+        "error": None,
+    }
+
+    try:
+        async with SalesGazerClient() as client:
+            # Step 1: httpx login
+            await client.login()
+            result["httpx_login"] = True
+
+            httpx_client = await client._get_client()
+            cookies = list(httpx_client.cookies.jar)
+            result["httpx_cookies"] = [
+                {"name": c.name, "domain": c.domain, "path": c.path}
+                for c in cookies
+            ]
+
+            # Step 2: Playwright settings page
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                )
+
+                # Inject httpx cookies
+                pw_cookies = [
+                    {
+                        "name": c.name,
+                        "value": c.value,
+                        "domain": c.domain.lstrip(".") if c.domain else "salesgazer.com",
+                        "path": c.path or "/",
+                    }
+                    for c in cookies
+                ]
+                if pw_cookies:
+                    await context.add_cookies(pw_cookies)
+
+                page = await context.new_page()
+                if stealth_async:
+                    await stealth_async(page)
+
+                await page.goto("https://salesgazer.com/mailbox/settings/", wait_until="domcontentloaded")
+                result["playwright_url"] = page.url
+
+                html = await page.content()
+                result["playwright_html_snippet"] = html[:5000]
+
+                rows = await page.query_selector_all("tr[store-id]")
+                result["tr_store_id_count"] = len(rows)
+
+                await browser.close()
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
 # ---------- Schemas ----------
 
 class SyncRequest(BaseModel):
