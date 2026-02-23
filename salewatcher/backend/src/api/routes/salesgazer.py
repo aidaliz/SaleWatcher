@@ -201,6 +201,18 @@ _sync_jobs: dict[str, SyncJob] = {}
 
 # ---------- Endpoints ----------
 
+@router.post("/subscribe-by-id/{store_id}")
+async def subscribe_by_store_id(store_id: str):
+    """
+    Subscribe to a specific store by its numeric SalesGazer store ID.
+    Bypasses domain discovery — use when store_id is already known.
+    """
+    async with SalesGazerClient() as client:
+        await client.login()
+        success = await client.subscribe_to_store(store_id)
+    return {"status": "success" if success else "failed", "store_id": store_id}
+
+
 @router.get("/stores", response_model=StoreListResponse)
 async def lookup_stores(
     domain: str = Query(..., min_length=2, description="Domain to search for"),
