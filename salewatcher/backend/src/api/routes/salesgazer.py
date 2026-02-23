@@ -88,6 +88,35 @@ async def debug_salesgazer():
                 rows = await page.query_selector_all("tr[store-id]")
                 result["tr_store_id_count"] = len(rows)
 
+                # Extract sample row data so we know what domains/attributes are present
+                sample_rows = []
+                for row in rows[:5]:
+                    store_id = await row.get_attribute("store-id")
+                    tds = await row.query_selector_all("td")
+                    td_texts = [(await td.inner_text()).strip() for td in tds[:6]]
+                    outer = await row.inner_html()
+                    sample_rows.append({
+                        "store_id": store_id,
+                        "td_texts": td_texts,
+                        "inner_html_snippet": outer[:300],
+                    })
+                result["sample_rows"] = sample_rows
+
+                # Look for any search/filter inputs anywhere on page
+                all_inputs = await page.query_selector_all("input")
+                input_info = []
+                for inp in all_inputs[:20]:
+                    input_info.append({
+                        "type": await inp.get_attribute("type"),
+                        "name": await inp.get_attribute("name"),
+                        "id": await inp.get_attribute("id"),
+                        "placeholder": await inp.get_attribute("placeholder"),
+                    })
+                result["all_inputs"] = input_info
+
+                # Full page HTML (up to 15000 chars to see the table)
+                result["playwright_html_snippet"] = (await page.content())[:15000]
+
                 await browser.close()
 
     except Exception as e:
