@@ -108,20 +108,20 @@ async def sync_brand_from_salesgazer(
         await client.login()
         logger.info(f"SalesGazer: logged in, syncing '{domain}' for {brand.name}")
 
-        # Step 2: Find matching stores
-        stores = await client.find_store_ids(domain)
+        # Step 2: Find matching stores (and subscribe via Playwright if requested).
+        # Subscription is handled inside find_store_ids via checkbox click,
+        # which is more reliable than the standalone subscribe_to_store HTTP call.
+        stores = await client.find_store_ids(domain, subscribe=subscribe)
         if not stores:
             logger.warning(f"SalesGazer: no stores found for domain '{domain}'")
             return stats
 
         stats["store_ids"] = [s["store_id"] for s in stores]
-
-        # Step 3: Subscribe if needed
-        if subscribe:
-            for store in stores:
-                if not store["is_subscribed"]:
-                    await client.subscribe_to_store(store["store_id"])
-                    logger.info(f"Subscribed to store {store['store_id']} ({store['domain']})")
+        for store in stores:
+            logger.info(
+                f"Store {store['store_id']} ({store['domain']}): "
+                f"subscribed={store['is_subscribed']}"
+            )
 
         # Step 4: Collect existing URLs for dedup
         existing_urls_result = await db.execute(

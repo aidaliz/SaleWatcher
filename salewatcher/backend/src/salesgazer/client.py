@@ -132,7 +132,7 @@ class SalesGazerClient:
             f"(status {login_resp.status_code})"
         )
 
-    async def _find_store_ids_with_playwright(self, domain: str) -> list[dict]:
+    async def _find_store_ids_with_playwright(self, domain: str, subscribe: bool = False) -> list[dict]:
         """
         Use Playwright (headless Chromium) to load the JS-rendered
         /mailbox/settings/ page and extract store rows matching *domain*.
@@ -260,6 +260,19 @@ class SalesGazerClient:
                     is_subscribed = bool(checkbox and await checkbox.is_checked())
 
                     if domain.lower() in row_domain or row_domain in domain.lower():
+                        # ── Auto-subscribe if requested and not yet subscribed ──
+                        if subscribe and not is_subscribed and checkbox:
+                            try:
+                                await checkbox.click()
+                                await page.wait_for_timeout(1000)  # wait for AJAX
+                                is_subscribed = await checkbox.is_checked()
+                                logger.info(
+                                    f"Subscribed to store {store_id} ({row_domain}): "
+                                    f"checked={is_subscribed}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to click subscribe checkbox for {store_id}: {e}")
+
                         results.append(
                             {
                                 "store_id": store_id,
@@ -291,7 +304,7 @@ class SalesGazerClient:
         )
         return results
 
-    async def find_store_ids(self, domain: str) -> list[dict]:
+    async def find_store_ids(self, domain: str, subscribe: bool = False) -> list[dict]:
         """
         Search the settings page for stores matching a domain.
 
@@ -299,9 +312,14 @@ class SalesGazerClient:
         method delegates to _find_store_ids_with_playwright() which
         launches a headless Chromium browser to obtain the real DOM.
 
+        Args:
+            domain: Domain to search for (e.g. "sephora.com")
+            subscribe: If True, click the subscription checkbox for any
+                       unsubscribed matching stores before returning.
+
         Returns list of dicts: [{store_id, domain, is_subscribed}]
         """
-        results = await self._find_store_ids_with_playwright(domain)
+        results = await self._find_store_ids_with_playwright(domain, subscribe=subscribe)
 
         # Playwright handled the full login flow; mark session as active
         # so subsequent httpx calls skip the login step.
