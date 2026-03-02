@@ -200,21 +200,29 @@ class SalesGazerClient:
 
                 logger.info(f"On settings page, url={page.url}")
 
-                # Use the server-side search (input[name="q"]) to filter to our domain
-                # This avoids scanning all 2300+ stores — server returns only matches
+                # Use the DataTable client-side filter to narrow rows to our domain.
+                # NOTE: input[name="q"] is the SIDEBAR inbox store search — it navigates
+                # away from the settings page. The settings table has its own DataTable
+                # filter that works client-side (no page reload needed).
                 try:
-                    search_input = await page.query_selector('input[name="q"]')
-                    if search_input:
-                        await search_input.fill(domain)
-                        await search_input.press("Enter")
-                        # Wait for AJAX response to update the table (not a page reload)
-                        await page.wait_for_load_state("networkidle", timeout=10000)
-                        await page.wait_for_timeout(500)  # small buffer for DOM update
-                        logger.info(f"Searched SalesGazer settings for '{domain}'")
+                    # Primary: DataTable filter inside #data_table_wrapper
+                    filter_input = await page.query_selector(
+                        '#data_table_wrapper input[type="search"]'
+                    )
+                    if not filter_input:
+                        # Fallback: any input inside .dataTables_filter
+                        filter_input = await page.query_selector('.dataTables_filter input')
+                    if filter_input:
+                        await filter_input.fill(domain)
+                        # No Enter needed — DataTable filters client-side in real-time
+                        await page.wait_for_timeout(800)  # let JS re-render filtered rows
+                        logger.info(f"Filtered SalesGazer settings table for '{domain}'")
                     else:
-                        logger.warning("No search input (input[name='q']) found on settings page")
+                        logger.warning(
+                            "No DataTable filter input found on settings page — will scan all rows"
+                        )
                 except Exception as e:
-                    logger.warning(f"Search input step failed: {e}")
+                    logger.warning(f"DataTable filter step failed: {e}")
 
                 # Wait for JS-rendered store rows (up to 20s after search)
                 try:
