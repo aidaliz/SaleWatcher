@@ -200,27 +200,37 @@ class SalesGazerClient:
 
                 logger.info(f"On settings page, url={page.url}")
 
-                # Use the DataTable client-side filter to narrow rows to our domain.
-                # NOTE: input[name="q"] is the SIDEBAR inbox store search — it navigates
-                # away from the settings page. The settings table has its own DataTable
-                # filter that works client-side (no page reload needed).
+                # Filter the DataTable to only show rows matching our domain.
+                # NOTE: input[name="q"] is the SIDEBAR inbox search — NOT the settings table.
+                # The settings DataTable filter may be hidden (display:none), so we drive
+                # it via the DataTables JS API and fall back to per-column visible inputs.
                 try:
-                    # Primary: DataTable filter inside #data_table_wrapper
-                    filter_input = await page.query_selector(
-                        '#data_table_wrapper input[type="search"]'
+                    filtered = await page.evaluate(
+                        """(domain) => {
+                            try {
+                                const dt = $('#data_table').DataTable();
+                                dt.search(domain).draw();
+                                return true;
+                            } catch(e) { return false; }
+                        }""",
+                        domain,
                     )
-                    if not filter_input:
-                        # Fallback: any input inside .dataTables_filter
-                        filter_input = await page.query_selector('.dataTables_filter input')
-                    if filter_input:
-                        await filter_input.fill(domain)
-                        # No Enter needed — DataTable filters client-side in real-time
-                        await page.wait_for_timeout(800)  # let JS re-render filtered rows
-                        logger.info(f"Filtered SalesGazer settings table for '{domain}'")
+                    if filtered:
+                        await page.wait_for_timeout(1000)  # let DataTable re-render
+                        logger.info(f"Filtered SalesGazer DataTable via JS API for '{domain}'")
                     else:
-                        logger.warning(
-                            "No DataTable filter input found on settings page — will scan all rows"
+                        # Fallback: type into the first visible "Type to filter..." input
+                        filter_input = await page.query_selector(
+                            'input[placeholder="Type to filter..."]'
                         )
+                        if filter_input:
+                            await filter_input.fill(domain)
+                            await page.wait_for_timeout(800)
+                            logger.info(f"Filtered via visible filter input for '{domain}'")
+                        else:
+                            logger.warning(
+                                "Could not filter DataTable — will scan all visible rows"
+                            )
                 except Exception as e:
                     logger.warning(f"DataTable filter step failed: {e}")
 
