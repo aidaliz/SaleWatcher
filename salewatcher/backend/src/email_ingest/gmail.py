@@ -250,6 +250,58 @@ class GmailClient:
             logger.error(f"Gmail search failed: {e}")
             return []
 
+    def search_emails_by_query(
+        self,
+        query: str,
+        max_results: Optional[int] = None,
+    ) -> list[dict]:
+        """
+        Search for emails using a raw Gmail API query string.
+
+        Args:
+            query: Raw Gmail search query (e.g. 'from:a.com OR from:b.com after:2025/01/01')
+            max_results: Maximum number of emails to return (None = all matching)
+
+        Returns:
+            List of email metadata dicts (same format as search_emails)
+        """
+        if not self.service:
+            raise RuntimeError("Not authenticated. Call authenticate first.")
+
+        logger.info(f"Searching Gmail: {query}")
+
+        try:
+            all_messages = []
+            page_token = None
+
+            while True:
+                page_size = min(500, max_results - len(all_messages)) if max_results else 500
+
+                results = self.service.users().messages().list(
+                    userId='me',
+                    q=query,
+                    maxResults=page_size,
+                    pageToken=page_token,
+                ).execute()
+
+                messages = results.get('messages', [])
+                all_messages.extend(messages)
+
+                if max_results and len(all_messages) >= max_results:
+                    all_messages = all_messages[:max_results]
+                    break
+
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+
+            logger.info(f"Found {len(all_messages)} emails for query: {query[:80]}")
+            return all_messages
+
+        except HttpError as e:
+            logger.error(f"Gmail search failed: {e}")
+            return []
+
     def get_email_content(self, message_id: str) -> Optional[dict]:
         """
         Fetch full email content by message ID.
@@ -352,6 +404,7 @@ BRAND_EMAIL_DOMAINS = {
     'nordstrom': ['nordstrom.com', 'e.nordstrom.com'],
     'nike': ['nike.com', 'email.nike.com'],
     'adidas': ['adidas.com', 'email.adidas.com'],
+    'sephora': ['em.sephora.com', 'sephora.com', 'email.sephora.com'],
 }
 
 

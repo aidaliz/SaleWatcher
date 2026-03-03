@@ -14,7 +14,7 @@ from uuid import UUID
 BACKEND_DIR = Path(__file__).parent.parent.parent.parent
 ENV_FILE_PATH = BACKEND_DIR / '.env'
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -65,6 +65,16 @@ class GmailConfigResponse(BaseModel):
     success: bool
     message: str
 
+
+# ---------- In-memory job tracking ----------
+
+class SyncJob(BaseModel):
+    brand_id: str
+    status: str = "running"
+    stats: Optional[dict] = None
+    error: Optional[str] = None
+
+_sync_jobs: dict[str, SyncJob] = {}
 
 # In-memory state storage for OAuth (use Redis in production)
 _oauth_states: dict[str, bool] = {}
@@ -413,13 +423,14 @@ async def disconnect_gmail():
 async def sync_brand_emails(
     brand_id: UUID,
     request: SyncRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Sync emails for a specific brand from Gmail.
 
-    Fetches promotional emails from the configured Gmail account
-    for the specified brand and stores them for extraction.
+    Kicks off a background task and returns immediately.
+    Use GET /sync/brand/{brand_id}/status to track progress.
     """
     # Get brand
     query = select(Brand).where(Brand.id == brand_id)
@@ -430,6 +441,14 @@ async def sync_brand_emails(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Brand not found",
+        )
+
+    # Check for already-running sync
+    job_key = str(brand_id)
+    if job_key in _sync_jobs and _sync_jobs[job_key].status == "running":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A Gmail sync is already running for {brand.name}",
         )
 
     # Check authentication
@@ -447,17 +466,71 @@ async def sync_brand_emails(
             detail="Gmail authentication failed. Please reconnect your Gmail account.",
         )
 
-    # Sync emails
-    service = EmailIngestionService(client)
-    stats = await service.sync_brand_emails(
-        db, brand, request.days_back, request.max_emails
+    # Track job
+    _sync_jobs[job_key] = SyncJob(brand_id=str(brand_id))
+
+    # Run in background
+    background_tasks.add_task(
+        _run_gmail_sync,
+        brand_id=brand_id,
+        days_back=request.days_back,
+        max_emails=request.max_emails,
     )
 
     return SyncResponse(
-        status="success",
-        message=f"Synced {stats['new']} new emails for {brand.name}",
-        stats=stats,
+        status="started",
+        message=f"Gmail sync started for {brand.name}",
     )
+
+
+@router.get("/sync/brand/{brand_id}/status")
+async def get_gmail_sync_status(brand_id: UUID):
+    """Get status of a running or completed Gmail sync."""
+    job_key = str(brand_id)
+    if job_key not in _sync_jobs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No sync job found for this brand",
+        )
+    return _sync_jobs[job_key]
+
+
+async def _run_gmail_sync(
+    brand_id: UUID,
+    days_back: int,
+    max_emails: int,
+) -> None:
+    """Background task for Gmail email sync."""
+    import logging
+    from src.db.session import get_session_factory
+
+    logger = logging.getLogger(__name__)
+    job_key = str(brand_id)
+    session_factory = get_session_factory()
+
+    try:
+        async with session_factory() as db:
+            # Load brand inside the new session
+            result = await db.execute(select(Brand).where(Brand.id == brand_id))
+            brand = result.scalar_one()
+
+            token_data = _get_stored_token()
+            client = get_gmail_client()
+            client.authenticate_with_token(token_data)
+
+            service = EmailIngestionService(client)
+            stats = await service.sync_brand_emails(
+                db, brand, days_back, max_emails
+            )
+
+            _sync_jobs[job_key].status = "completed"
+            _sync_jobs[job_key].stats = stats
+            logger.info(f"Gmail sync completed for brand {brand_id}: {stats}")
+
+    except Exception as e:
+        logger.error(f"Gmail sync failed for brand {brand_id}: {e}")
+        _sync_jobs[job_key].status = "failed"
+        _sync_jobs[job_key].error = str(e)
 
 
 @router.post("/sync/all", response_model=SyncResponse)
@@ -499,3 +572,91 @@ async def sync_all_brands(
         message=f"Synced {total_new} new emails across {len(all_stats)} brands ({total_duplicates} duplicates skipped)",
         stats={"brands": all_stats},
     )
+
+
+# Hard-coded Sephora backfill parameters
+_SEPHORA_BRAND_ID = "37c7ce07-6c18-46a2-aae9-00b0817ecb80"
+_SEPHORA_QUERY = "after:2025/01/01 from:em.sephora.com OR from:sephora.com OR from:email.sephora.com"
+
+
+@router.post("/gmail/backfill/sephora", response_model=SyncResponse)
+async def backfill_sephora(background_tasks: BackgroundTasks):
+    """
+    Convenience endpoint to backfill all Sephora emails from Gmail.
+
+    Uses hard-coded brand ID and query. No request body needed.
+    Track progress via GET /sync/brand/{brand_id}/status.
+    """
+    brand_id = UUID(_SEPHORA_BRAND_ID)
+    job_key = str(brand_id)
+
+    # Check for already-running sync
+    if job_key in _sync_jobs and _sync_jobs[job_key].status == "running":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A Sephora sync is already running",
+        )
+
+    # Check authentication
+    token_data = _get_stored_token()
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail not authenticated. Please connect your Gmail account first.",
+        )
+
+    client = get_gmail_client()
+    if not client.authenticate_with_token(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail authentication failed. Please reconnect your Gmail account.",
+        )
+
+    # Track job
+    _sync_jobs[job_key] = SyncJob(brand_id=_SEPHORA_BRAND_ID)
+
+    # Run in background
+    background_tasks.add_task(
+        _run_sephora_backfill,
+    )
+
+    return SyncResponse(
+        status="started",
+        message="Sephora Gmail backfill started",
+    )
+
+
+async def _run_sephora_backfill() -> None:
+    """Background task for Sephora Gmail backfill."""
+    import logging
+    from src.db.session import get_session_factory
+
+    logger = logging.getLogger(__name__)
+    brand_id = UUID(_SEPHORA_BRAND_ID)
+    job_key = str(brand_id)
+    session_factory = get_session_factory()
+
+    try:
+        async with session_factory() as db:
+            result = await db.execute(select(Brand).where(Brand.id == brand_id))
+            brand = result.scalar_one()
+
+            token_data = _get_stored_token()
+            client = get_gmail_client()
+            client.authenticate_with_token(token_data)
+
+            service = EmailIngestionService(client)
+
+            # Fetch all emails since 2025/01/01 — ~450 days, no practical cap
+            stats = await service.sync_brand_emails(
+                db, brand, days_back=450, max_emails=10000,
+            )
+
+            _sync_jobs[job_key].status = "completed"
+            _sync_jobs[job_key].stats = stats
+            logger.info(f"Sephora backfill completed: {stats}")
+
+    except Exception as e:
+        logger.error(f"Sephora backfill failed: {e}")
+        _sync_jobs[job_key].status = "failed"
+        _sync_jobs[job_key].error = str(e)

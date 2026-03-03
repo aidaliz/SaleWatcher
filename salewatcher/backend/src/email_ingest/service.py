@@ -5,15 +5,14 @@ Handles deduplication to avoid processing the same promotional email
 received at multiple +N addresses.
 """
 import logging
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Brand, RawEmail
-from src.email_ingest.gmail import GmailClient, generate_email_hash, get_brand_email_query
+from src.email_ingest.gmail import GmailClient, get_brand_email_query
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +22,6 @@ class EmailIngestionService:
 
     def __init__(self, gmail_client: GmailClient):
         self.gmail = gmail_client
-        # Track hashes we've already processed in this session
-        self._processed_hashes: set[str] = set()
 
     async def sync_brand_emails(
         self,
@@ -53,15 +50,16 @@ class EmailIngestionService:
             'errors': 0,
         }
 
-        # Get existing email hashes for this brand
-        existing_hashes = await self._get_existing_hashes(db, brand.id)
-        logger.info(f"Found {len(existing_hashes)} existing emails for {brand.name}")
+        # Get existing Gmail message IDs for this brand (dedup by message ID)
+        existing_gmail_ids = await self._get_existing_gmail_ids(db, brand.id)
+        logger.info(f"Found {len(existing_gmail_ids)} existing Gmail emails for {brand.name}")
 
-        # Search Gmail for brand emails
+        # Search Gmail for brand emails using multi-domain query
         query = get_brand_email_query(brand.milled_slug)
-        messages = self.gmail.search_emails(
-            sender_email=query.split('from:')[1].split()[0] if 'from:' in query else brand.milled_slug,
-            days_back=days_back,
+        after_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y/%m/%d')
+        full_query = f"{query} after:{after_date}"
+        messages = self.gmail.search_emails_by_query(
+            query=full_query,
             max_results=max_emails,
         )
 
@@ -69,22 +67,18 @@ class EmailIngestionService:
 
         for msg in messages:
             try:
-                # Fetch full email content
-                email_data = self.gmail.get_email_content(msg['id'])
-                if not email_data:
-                    stats['errors'] += 1
+                msg_id = msg['id']
+                gmail_url = f"gmail://{msg_id}"
+
+                # Dedup by Gmail message ID
+                if msg_id in existing_gmail_ids:
+                    stats['duplicates'] += 1
                     continue
 
-                # Generate dedup hash
-                email_hash = generate_email_hash(
-                    brand.milled_slug,
-                    email_data['subject'],
-                    email_data['sent_at'],
-                )
-
-                # Check for duplicates
-                if email_hash in existing_hashes or email_hash in self._processed_hashes:
-                    stats['duplicates'] += 1
+                # Fetch full email content
+                email_data = self.gmail.get_email_content(msg_id)
+                if not email_data:
+                    stats['errors'] += 1
                     continue
 
                 # Convert timezone-aware datetime to naive (database uses TIMESTAMP WITHOUT TIME ZONE)
@@ -95,15 +89,16 @@ class EmailIngestionService:
                 # Create new email record
                 raw_email = RawEmail(
                     brand_id=brand.id,
-                    milled_url=f"gmail://{msg['id']}",  # Use Gmail message ID as URL
+                    milled_url=gmail_url,
                     subject=email_data['subject'],
                     sent_at=sent_at,
                     html_content=email_data['html_content'],
                     scraped_at=datetime.utcnow(),
+                    source='gmail',
                 )
 
                 db.add(raw_email)
-                self._processed_hashes.add(email_hash)
+                existing_gmail_ids.add(msg_id)
                 stats['new'] += 1
 
                 logger.info(f"Imported: {email_data['subject'][:60]}...")
@@ -120,23 +115,17 @@ class EmailIngestionService:
 
         return stats
 
-    async def _get_existing_hashes(self, db: AsyncSession, brand_id: UUID) -> set[str]:
-        """Get hashes of existing emails for a brand."""
-        query = select(RawEmail.subject, RawEmail.sent_at).where(RawEmail.brand_id == brand_id)
+    async def _get_existing_gmail_ids(self, db: AsyncSession, brand_id: UUID) -> set[str]:
+        """Get existing Gmail message IDs for a brand (from gmail:// URLs)."""
+        query = select(RawEmail.milled_url).where(
+            RawEmail.brand_id == brand_id,
+            RawEmail.milled_url.like('gmail://%'),
+        )
         result = await db.execute(query)
-        rows = result.all()
+        urls = result.scalars().all()
 
-        hashes = set()
-        for subject, sent_at in rows:
-            # Get brand slug for hash
-            brand_query = select(Brand.milled_slug).where(Brand.id == brand_id)
-            brand_result = await db.execute(brand_query)
-            brand_slug = brand_result.scalar_one()
-
-            email_hash = generate_email_hash(brand_slug, subject, sent_at)
-            hashes.add(email_hash)
-
-        return hashes
+        # Extract message ID from gmail://<message_id>
+        return {url.removeprefix('gmail://') for url in urls}
 
     async def sync_all_brands(
         self,
