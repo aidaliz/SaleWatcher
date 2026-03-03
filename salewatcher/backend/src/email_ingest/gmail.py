@@ -393,18 +393,25 @@ def generate_email_hash(brand_slug: str, subject: str, sent_date: datetime) -> s
 
 # Brand email domain mappings
 BRAND_EMAIL_DOMAINS = {
-    'gamestop': ['gamestop.com', 'em.gamestop.com'],
-    'skullcandy': ['skullcandy.com', 'e.skullcandy.com'],
-    'target': ['target.com', 'em.target.com'],
-    'bestbuy': ['bestbuy.com', 'emailinfo.bestbuy.com'],
-    'walmart': ['walmart.com', 'email.walmart.com'],
-    'amazon': ['amazon.com', 'email.amazon.com'],
-    'kohls': ['kohls.com', 'e.kohls.com'],
-    'macys': ['macys.com', 'e.macys.com'],
-    'nordstrom': ['nordstrom.com', 'e.nordstrom.com'],
-    'nike': ['nike.com', 'email.nike.com'],
-    'adidas': ['adidas.com', 'email.adidas.com'],
-    'sephora': ['em.sephora.com', 'sephora.com', 'email.sephora.com'],
+    'gamestop': ['@gamestop.com', '@em.gamestop.com'],
+    'skullcandy': ['@skullcandy.com', '@e.skullcandy.com'],
+    'target': ['@target.com', '@em.target.com'],
+    'bestbuy': ['@bestbuy.com', '@emailinfo.bestbuy.com'],
+    'walmart': ['@walmart.com', '@email.walmart.com'],
+    'amazon': ['@amazon.com', '@email.amazon.com'],
+    'kohls': ['@kohls.com', '@e.kohls.com'],
+    'macys': ['@macys.com', '@e.macys.com'],
+    'nordstrom': ['@nordstrom.com', '@e.nordstrom.com'],
+    'nike': ['@nike.com', '@email.nike.com'],
+    'adidas': ['@adidas.com', '@email.adidas.com'],
+    'sephora': ['@em.sephora.com', '@sephora.com', '@email.sephora.com'],
+    # Beauty brands
+    'ulta': ['@ulta.com', '@em.ulta.com'],
+    'fenty-beauty': ['@fentybeauty.com', '@em.fentybeauty.com'],
+    'huda-beauty': ['@hudabeauty.com', '@em.hudabeauty.com'],
+    'kylie-cosmetics': ['@kyliecosmetics.com', '@em.kyliecosmetics.com'],
+    'summer-fridays': ['@summerfridays.com', '@em.summerfridays.com'],
+    'bathbodyworks': ['@bathandbodyworks.com', '@em.bathandbodyworks.com'],
 }
 
 
@@ -412,14 +419,19 @@ def get_brand_email_query(brand_slug: str) -> str:
     """
     Get Gmail search query for a brand.
 
+    Uses @domain.com syntax for proper Gmail domain matching.
+    Wraps OR clauses in parentheses so date filters apply to all.
+
     Args:
         brand_slug: Brand identifier
 
     Returns:
-        Gmail search query string
+        Gmail search query string, e.g. '(from:@sephora.com OR from:@em.sephora.com)'
     """
-    domains = BRAND_EMAIL_DOMAINS.get(brand_slug.lower(), [f"{brand_slug}.com"])
+    domains = BRAND_EMAIL_DOMAINS.get(brand_slug.lower(), [f"@{brand_slug}.com"])
 
-    # Build OR query for multiple domains
+    # Build OR query with parentheses so 'after:' date filters apply to all clauses
     domain_queries = [f"from:{domain}" for domain in domains]
-    return " OR ".join(domain_queries)
+    if len(domain_queries) == 1:
+        return domain_queries[0]
+    return f"({' OR '.join(domain_queries)})"
