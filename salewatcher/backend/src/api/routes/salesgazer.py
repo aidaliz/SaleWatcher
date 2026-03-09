@@ -4,6 +4,7 @@ API routes for SalesGazer integration.
 Provides endpoints to look up stores, subscribe, and sync email history.
 """
 import logging
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -13,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
-from src.db.models import Brand
+from src.db.models import Brand, SaleWindow
 from src.salesgazer.client import SalesGazerClient
 from src.salesgazer.sync import sync_brand_from_salesgazer
 
@@ -200,6 +201,56 @@ _sync_jobs: dict[str, SyncJob] = {}
 
 
 # ---------- Endpoints ----------
+
+
+class ActiveSale(BaseModel):
+    brand_name: str
+    domain: str | None
+    discount_value: float
+    discount_type: Optional[str]
+    discount_summary: str
+    start_date: datetime
+    end_date: datetime
+
+
+@router.get("/active-sales", response_model=list[ActiveSale])
+async def get_active_sales(
+    db: AsyncSession = Depends(get_db),
+):
+    """Return brands with sale windows active right now.
+
+    A sale is considered active when ``start_date <= now <= end_date``.
+    Results are sorted by ``discount_value`` descending.
+    """
+    now = datetime.utcnow()
+
+    query = (
+        select(SaleWindow, Brand)
+        .join(Brand, Brand.id == SaleWindow.brand_id)
+        .where(SaleWindow.start_date <= now)
+        .where(SaleWindow.end_date >= now)
+        .order_by(SaleWindow.discount_value.desc())
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    active_sales: list[ActiveSale] = []
+    for window, brand in rows:
+        active_sales.append(
+            ActiveSale(
+                brand_name=brand.name,
+                domain=brand.salesgazer_domain,
+                discount_value=window.discount_value,
+                discount_type=window.discount_type,
+                discount_summary=window.discount_summary,
+                start_date=window.start_date,
+                end_date=window.end_date,
+            )
+        )
+
+    return active_sales
+
 
 @router.post("/subscribe-by-id/{store_id}")
 async def subscribe_by_store_id(store_id: str):
