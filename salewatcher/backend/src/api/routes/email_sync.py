@@ -14,7 +14,7 @@ from uuid import UUID
 BACKEND_DIR = Path(__file__).parent.parent.parent.parent
 ENV_FILE_PATH = BACKEND_DIR / '.env'
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -624,6 +624,117 @@ async def backfill_sephora(background_tasks: BackgroundTasks):
         status="started",
         message="Sephora Gmail backfill started",
     )
+
+
+@router.post("/sync/recent")
+async def sync_recent_emails(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Sync emails for all brands for the last 7 days.
+
+    Designed for daily cron use (Railway cron job at 11:00 UTC / 6am ET).
+    Protected by X-Cron-Secret header when CRON_SECRET env var is set.
+
+    Returns JSON: {status, brands_synced, new_emails, errors}
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # --- Auth check ---
+    cron_secret = os.getenv("CRON_SECRET")
+    if cron_secret:
+        provided = request.headers.get("X-Cron-Secret", "")
+        if not secrets.compare_digest(provided, cron_secret):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing X-Cron-Secret header.",
+            )
+
+    # --- Gmail auth ---
+    token_data = _get_stored_token()
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail not authenticated. Please connect your Gmail account first.",
+        )
+
+    client = get_gmail_client()
+    if not client.authenticate_with_token(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail authentication failed. Please reconnect your Gmail account.",
+        )
+
+    # --- Sync ---
+    service = EmailIngestionService(client)
+    all_stats = await service.sync_all_brands(
+        db, days_back=7, max_emails_per_brand=50
+    )
+
+    brands_synced = len(all_stats)
+    new_emails = sum(s.get("new", 0) for s in all_stats if isinstance(s.get("new"), int))
+    errors = [s for s in all_stats if "error" in s]
+
+    logger.info(
+        f"/sync/recent completed: brands={brands_synced}, new={new_emails}, errors={len(errors)}"
+    )
+
+    return {
+        "status": "success",
+        "brands_synced": brands_synced,
+        "new_emails": new_emails,
+        "errors": errors,
+    }
+
+
+@router.post("/sync/trigger")
+async def trigger_sync(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manually trigger a recent email sync (last 7 days, no auth required).
+
+    Convenience endpoint for local testing / ad-hoc refreshes.
+    Identical to /sync/recent but skips the cron-secret check.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    token_data = _get_stored_token()
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail not authenticated. Please connect your Gmail account first.",
+        )
+
+    client = get_gmail_client()
+    if not client.authenticate_with_token(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gmail authentication failed. Please reconnect your Gmail account.",
+        )
+
+    service = EmailIngestionService(client)
+    all_stats = await service.sync_all_brands(
+        db, days_back=7, max_emails_per_brand=50
+    )
+
+    brands_synced = len(all_stats)
+    new_emails = sum(s.get("new", 0) for s in all_stats if isinstance(s.get("new"), int))
+    errors = [s for s in all_stats if "error" in s]
+
+    logger.info(
+        f"/sync/trigger completed: brands={brands_synced}, new={new_emails}, errors={len(errors)}"
+    )
+
+    return {
+        "status": "success",
+        "brands_synced": brands_synced,
+        "new_emails": new_emails,
+        "errors": errors,
+    }
 
 
 async def _run_sephora_backfill() -> None:
