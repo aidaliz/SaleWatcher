@@ -21,61 +21,74 @@ router = APIRouter()
 
 
 class ActiveSaleWindow(BaseModel):
-    """A sale window that is currently active."""
+    """A sale window that is currently active or starting soon."""
     brand_name: Optional[str] = None
     discount_summary: Optional[str] = None
     discount_value: float
     discount_type: Optional[str] = None
     start_date: datetime
     end_date: datetime
+    status: str = "active"  # "active" = on sale now, "upcoming" = starts within 7 days
 
 
 @router.get("/active-now", response_model=list[ActiveSaleWindow])
 async def get_active_sale_windows(
     db: AsyncSession = Depends(get_db),
 ):
-    """Return brands with predicted sales happening right now.
+    """Return brands on sale NOW or starting within the next 7 days.
 
-    Checks both:
-    1. Prediction records (predicted_start <= now <= predicted_end) — projected sales
-    2. Historical SaleWindow records where today falls within the window — confirmed past patterns
-    Predictions take priority; deduped by brand.
+    Returns two groups (both in same list, differentiated by status field):
+    - status="active"   → sale is happening right now
+    - status="upcoming" → sale starts within next 7 days
+
+    Sources checked (in priority order):
+    1. Prediction records (predicted_start/predicted_end)
+    2. Historical SaleWindow records (start_date/end_date)
+    Deduped by brand within each group.
     """
     now = datetime.utcnow()
-    seen_brands: set = set()
-    results: list[dict] = []
+    week_out = now + timedelta(days=7)
+    seen_active: set = set()
+    seen_upcoming: set = set()
+    active: list[dict] = []
+    upcoming: list[dict] = []
 
-    # 1. Check active Predictions (projected future/current sales)
+    # --- Predictions ---
     pred_query = (
         select(Prediction)
         .options(selectinload(Prediction.brand))
-        .where(Prediction.predicted_start <= now)
+        .where(Prediction.predicted_start <= week_out)
         .where(Prediction.predicted_end >= now)
-        .order_by(Prediction.confidence.desc())
+        .order_by(Prediction.predicted_start)
     )
     pred_result = await db.execute(pred_query)
     predictions = list(pred_result.scalars().all())
 
     for p in predictions:
-        brand_name = p.brand.name if p.brand else None
-        key = brand_name or str(p.brand_id)
-        if key in seen_brands:
-            continue
-        seen_brands.add(key)
-        results.append({
+        brand_name = p.brand.name if p.brand else "Unknown"
+        key = brand_name
+        entry = {
             "brand_name": brand_name,
             "discount_summary": p.discount_summary,
             "discount_value": p.expected_discount,
             "discount_type": p.discount_type,
             "start_date": p.predicted_start,
             "end_date": p.predicted_end,
-        })
+        }
+        if p.predicted_start <= now:
+            if key not in seen_active:
+                seen_active.add(key)
+                active.append({**entry, "status": "active"})
+        else:
+            if key not in seen_upcoming:
+                seen_upcoming.add(key)
+                upcoming.append({**entry, "status": "upcoming"})
 
-    # 2. Also check historical SaleWindows that overlap today (e.g. confirmed live syncs)
+    # --- SaleWindows (live confirmed syncs) ---
     sw_query = (
         select(SaleWindow)
         .options(selectinload(SaleWindow.brand))
-        .where(SaleWindow.start_date <= now)
+        .where(SaleWindow.start_date <= week_out)
         .where(SaleWindow.end_date >= now)
         .order_by(SaleWindow.start_date)
     )
@@ -83,21 +96,25 @@ async def get_active_sale_windows(
     windows = list(sw_result.scalars().all())
 
     for w in windows:
-        brand_name = w.brand.name if w.brand else None
-        key = brand_name or str(w.brand_id)
-        if key in seen_brands:
-            continue
-        seen_brands.add(key)
-        results.append({
+        brand_name = w.brand.name if w.brand else "Unknown"
+        entry = {
             "brand_name": brand_name,
             "discount_summary": w.discount_summary,
             "discount_value": w.discount_value,
             "discount_type": w.discount_type,
             "start_date": w.start_date,
             "end_date": w.end_date,
-        })
+        }
+        if w.start_date <= now:
+            if brand_name not in seen_active:
+                seen_active.add(brand_name)
+                active.append({**entry, "status": "active"})
+        else:
+            if brand_name not in seen_upcoming:
+                seen_upcoming.add(brand_name)
+                upcoming.append({**entry, "status": "upcoming"})
 
-    return results
+    return active + upcoming
 
 
 class PredictionStats(BaseModel):
