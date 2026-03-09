@@ -34,31 +34,70 @@ class ActiveSaleWindow(BaseModel):
 async def get_active_sale_windows(
     db: AsyncSession = Depends(get_db),
 ):
-    """Return sale windows that are active right now (based on start/end dates)."""
-    now = datetime.utcnow()
+    """Return brands with predicted sales happening right now.
 
-    query = (
+    Checks both:
+    1. Prediction records (predicted_start <= now <= predicted_end) — projected sales
+    2. Historical SaleWindow records where today falls within the window — confirmed past patterns
+    Predictions take priority; deduped by brand.
+    """
+    now = datetime.utcnow()
+    seen_brands: set = set()
+    results: list[dict] = []
+
+    # 1. Check active Predictions (projected future/current sales)
+    pred_query = (
+        select(Prediction)
+        .options(selectinload(Prediction.brand))
+        .where(Prediction.predicted_start <= now)
+        .where(Prediction.predicted_end >= now)
+        .order_by(Prediction.confidence.desc())
+    )
+    pred_result = await db.execute(pred_query)
+    predictions = list(pred_result.scalars().all())
+
+    for p in predictions:
+        brand_name = p.brand.name if p.brand else None
+        key = brand_name or str(p.brand_id)
+        if key in seen_brands:
+            continue
+        seen_brands.add(key)
+        results.append({
+            "brand_name": brand_name,
+            "discount_summary": p.discount_summary,
+            "discount_value": p.expected_discount,
+            "discount_type": p.discount_type,
+            "start_date": p.predicted_start,
+            "end_date": p.predicted_end,
+        })
+
+    # 2. Also check historical SaleWindows that overlap today (e.g. confirmed live syncs)
+    sw_query = (
         select(SaleWindow)
         .options(selectinload(SaleWindow.brand))
         .where(SaleWindow.start_date <= now)
         .where(SaleWindow.end_date >= now)
         .order_by(SaleWindow.start_date)
     )
+    sw_result = await db.execute(sw_query)
+    windows = list(sw_result.scalars().all())
 
-    result = await db.execute(query)
-    windows = list(result.scalars().all())
-
-    return [
-        {
-            "brand_name": w.brand.name if w.brand else None,
+    for w in windows:
+        brand_name = w.brand.name if w.brand else None
+        key = brand_name or str(w.brand_id)
+        if key in seen_brands:
+            continue
+        seen_brands.add(key)
+        results.append({
+            "brand_name": brand_name,
             "discount_summary": w.discount_summary,
             "discount_value": w.discount_value,
             "discount_type": w.discount_type,
             "start_date": w.start_date,
             "end_date": w.end_date,
-        }
-        for w in windows
-    ]
+        })
+
+    return results
 
 
 class PredictionStats(BaseModel):
