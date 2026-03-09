@@ -20,6 +20,47 @@ from src.db.schemas import (
 router = APIRouter()
 
 
+class ActiveSaleWindow(BaseModel):
+    """A sale window that is currently active."""
+    brand_name: Optional[str] = None
+    discount_summary: Optional[str] = None
+    discount_value: float
+    discount_type: Optional[str] = None
+    start_date: datetime
+    end_date: datetime
+
+
+@router.get("/active-now", response_model=list[ActiveSaleWindow])
+async def get_active_sale_windows(
+    db: AsyncSession = Depends(get_db),
+):
+    """Return sale windows that are active right now (based on start/end dates)."""
+    now = datetime.utcnow()
+
+    query = (
+        select(SaleWindow)
+        .options(selectinload(SaleWindow.brand))
+        .where(SaleWindow.start_date <= now)
+        .where(SaleWindow.end_date >= now)
+        .order_by(SaleWindow.start_date)
+    )
+
+    result = await db.execute(query)
+    windows = list(result.scalars().all())
+
+    return [
+        {
+            "brand_name": w.brand.name if w.brand else None,
+            "discount_summary": w.discount_summary,
+            "discount_value": w.discount_value,
+            "discount_type": w.discount_type,
+            "start_date": w.start_date,
+            "end_date": w.end_date,
+        }
+        for w in windows
+    ]
+
+
 class PredictionStats(BaseModel):
     """Statistics about predictions."""
     total_predictions: int
